@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import List
 import base64
 import gzip
 import zlib
@@ -5,12 +7,14 @@ import pathlib
 import xml.etree.ElementTree as ET
 from cyclicgentmx.tmx_types import Color, Property, TileSet, TileOffset, Grid, Image, Data, Chunk, Terrain,\
     Tile, Object, Frame, ObjectGroup, Layer, ImageLayer, Group, WangSet, WangTile, WangColor, WangID, TerrainTypes,\
-    Properties, WangSets, Animation, Objects
+    Properties, WangSets, Animation, Objects, MapIntValidationError
 from cyclicgentmx.helpers import int_or_none, float_or_none, four_bytes
 
 
-class Map:
-    def __init__(self, map_name):
+class MapLoad:
+    @classmethod
+    def from_file(cls, map_name: str) -> MapLoad:
+        self = cls()
         self.file_dir = pathlib.PurePath(map_name).parent
         self.properties = None
         self.tilesets = []
@@ -25,19 +29,20 @@ class Map:
 
         self.version = root.attrib.get("version", None)
         self.tiledversion = root.attrib.get("tiledversion", None)
-        self.compressionlevel = root.attrib.get("compressionlevel", None)
-        self.orientation = root.attrib.get("orientation", None)
-        self.renderorder = root.attrib.get("renderorder", None)
-        self.width = int_or_none(root.attrib.get("width", None))
-        self.height = int_or_none(root.attrib.get("height", None))
-        self.tilewidth = int_or_none(root.attrib.get("tilewidth", None))
-        self.tileheight = int_or_none(root.attrib.get("tileheight", None))
+        self.compressionlevel = int_or_none(root.attrib.get("compressionlevel", None))
+        self.orientation = root.attrib.get("orientation")
+        self.renderorder = root.attrib.get("renderorder")
+        self.width = int(root.attrib.get("width"))
+        self.height = int(root.attrib.get("height"))
+        self.tilewidth = int(root.attrib.get("tilewidth"))
+        self.tileheight = int(root.attrib.get("tileheight"))
         self.hexsidelength = int_or_none(root.attrib.get("hexsidelength", None))
         self.staggeraxis = root.attrib.get("staggeraxis", None)
         self.staggerindex = root.attrib.get("staggerindex", None)
         self.backgroundcolor = root.attrib.get("backgroundcolor", None)
         self.nextlayerid = int_or_none(root.attrib.get("nextlayerid", None))
         self.nextobjectid = int_or_none(root.attrib.get("nextobjectid", None))
+        self.infinite = True if root.attrib.get("infinite", None) else False
 
         for child in root:
             if child.tag == 'properties':
@@ -61,8 +66,9 @@ class Map:
             else:
                 continue
             self.childs.append(child_object)
+        return self
 
-    def fill_properties(self, properties):
+    def fill_properties(self, properties: ET.Element) -> Properties:
         result = []
         for prop in properties:
             prop_type = prop.attrib.get('type', 'string')
@@ -86,7 +92,7 @@ class Map:
                           )
         return Properties(result)
 
-    def create_tileset(self, tileset):
+    def create_tileset(self, tileset: ET.Element) -> TileSet:
         firstgid = int(tileset.attrib.get('firstgid'))
         source = tileset.attrib.get('source', None)
         if source:
@@ -96,8 +102,8 @@ class Map:
         else:
             tileset_root = tileset
         name = tileset_root.attrib.get('name')
-        tilewidth = tileset_root.attrib.get('tilewidth')
-        tileheight = tileset_root.attrib.get('tileheight')
+        tilewidth = int(tileset_root.attrib.get('tilewidth'))
+        tileheight = int(tileset_root.attrib.get('tileheight'))
         spacing = int_or_none(tileset_root.attrib.get('spacing', None))
         margin = int_or_none(tileset_root.attrib.get('margin', None))
         tilecount = int_or_none(tileset_root.attrib.get('tilecount'))
@@ -120,30 +126,24 @@ class Map:
                 y = int_or_none(child.attrib.get('y'))
                 child_object = TileOffset(x, y)
                 tileoffset = child_object
-                childs.append(child_object)
             elif child.tag == 'grid':
                 orientation = child.attrib.get('orientation')
                 width = int_or_none(child.attrib.get('width'))
                 height = int_or_none(child.attrib.get('height'))
                 child_object = Grid(orientation, width, height)
                 grid = child_object
-                childs.append(child_object)
             elif child.tag == 'properties':
                 child_object = self.fill_properties(child)
                 properties = child_object
-                childs.append(child_object)
             elif child.tag == 'image':
                 child_object = self.create_image(child)
                 image = child_object
-                childs.append(child_object)
             elif child.tag == 'terraintypes':
                 child_object = self.fill_terraintypes(child)
                 terraintypes = child_object
-                childs.append(child_object)
             elif child.tag == 'tile':
                 child_object = self.create_tile(child)
                 tiles.append(child_object)
-                childs.append(child_object)
             elif child.tag == 'wangsets':
                 child_object = self.fill_wangsets(child)
                 wangsets = child_object
@@ -155,7 +155,7 @@ class Map:
                        version, tiledversion, tileoffset, grid, properties, image, terraintypes,
                        tiles, wangsets, childs)
 
-    def create_image(self, image):
+    def create_image(self, image: ET.Element) -> Image:
         image_format = image.attrib.get('format')
         source = image.attrib.get('source')
         trans = Color(image.attrib.get('trans')) if image.attrib.get('trans', None) else None
@@ -170,7 +170,7 @@ class Map:
                 childs.append(data)
         return Image(image_format, source, trans, width, height, data, childs)
 
-    def fill_tiles(self, data, encoding, compression):
+    def fill_tiles(self, data: ET.Element, encoding: str, compression: str) -> List[int]:
         tiles = []
         if encoding is None:
             for child in data:
@@ -190,10 +190,8 @@ class Map:
         else:
             raise ValueError("Encoding format {} not supported.". format(encoding))
         return tiles
-    
 
-
-    def create_data(self, data):
+    def create_data(self, data: ET.Element) -> Data:
         encoding = data.attrib.get('encoding', None)
         compression = data.attrib.get('compression')
         tiles = []
@@ -214,25 +212,29 @@ class Map:
             childs = tiles
         return Data(encoding, compression, tiles, chunks, childs)
 
-    def fill_terraintypes(self, terraintypes):
+    def fill_terraintypes(self, terraintypes: ET.Element) -> TerrainTypes:
         result = []
         for terrain in terraintypes:
             if terrain.tag == 'terrain':
                 name = terrain.attrib.get("name")
                 tile = terrain.attrib.get("tile")
                 properties = None
+                childs = []
                 for terrain_properties in terrain:
                     if terrain_properties.tag == 'properties':
                         properties = self.fill_properties(terrain_properties)
+                        childs.append(properties)
                     else:
                         continue
-                result.append(Terrain(name, tile, properties))
+                result.append(Terrain(name, tile, properties, childs))
         return TerrainTypes(result)
 
-    def create_tile(self, tile):
-        tile_id = int_or_none(tile.attrib.get('id', None))
+    def create_tile(self, tile: ET.Element) -> Tile:
+        tile_id = int(tile.attrib.get('id'))
         tile_type = tile.attrib.get('type', None)
-        terrain = []
+        terrain = tile.attrib.get('terrain', None)
+        if terrain is not None:
+            terrain = [int(element) if element else None for element in terrain.split(',')]
         probability = float_or_none(tile.attrib.get('probability', None))
 
         properties = None
@@ -259,18 +261,18 @@ class Map:
             childs.append(child_object)
         return Tile(tile_id, tile_type, terrain, probability, properties, image, objectgroup, animation, childs)
 
-    def fill_animation(self, animation):
+    def fill_animation(self, animation: ET.Element) -> Animation:
         result = []
         for frame in animation:
             if frame.tag == 'frame':
-                tileid = frame.attrib.get('tileid')
-                duration = frame.attrib.get('tileid')
+                tileid = int(frame.attrib.get('tileid'))
+                duration = int(frame.attrib.get('tileid'))
                 result.append(Frame(tileid, duration))
         return Animation(result)
 
-    def create_objectgroup(self, objectgroup):
-        objectgroup_id = int_or_none(objectgroup.attrib.get('id', None))
-        name = objectgroup.attrib.get('name', None)
+    def create_objectgroup(self, objectgroup: ET.Element) -> ObjectGroup:
+        objectgroup_id = int(objectgroup.attrib.get('id'))
+        name = objectgroup.attrib.get('name')
         color = Color(objectgroup.attrib.get('color', None)) if objectgroup.attrib.get('color', None) else None
         x = int_or_none(objectgroup.attrib.get('x', None))
         y = int_or_none(objectgroup.attrib.get('y', None))
@@ -297,24 +299,31 @@ class Map:
         return ObjectGroup(objectgroup_id, name, color, x, y, width, height, opacity, visible,
                            offsetx, offsety, draworder, properties, Objects(objects), childs)
 
-    def create_object(self, object):
-        object_id = int_or_none(object.attrib.get('id', None))
+    def create_object(self, object: ET.Element) -> Object:
+        object_id = object.attrib.get('id')
         name = object.attrib.get('id', None)
         object_type = object.attrib.get('id', None)
-        x = float_or_none(object.attrib.get('x', None))
-        y = float_or_none(object.attrib.get('y', None))
+        x = object.attrib.get('x')
+        y = object.attrib.get('y')
         width = float_or_none(object.attrib.get('width', None))
         height = float_or_none(object.attrib.get('height', None))
         rotation = float_or_none(object.attrib.get('rotation', None))
         gid = int_or_none(object.attrib.get('gid', None))
-        visible = True if object.attrib.get('visible', True) else False
+        visible = False if object.attrib.get('visible', '1') else None
         template = object.attrib.get('template', None)
         child_type = None
+        properties = None
+        childs = []
         for child in object:
-            child_type = child.tag
-        return Object(object_id, name, object_type, x, y, width, height, rotation, gid, visible, template, child_type)
+            if child.tag == 'properties':
+                properties = self.fill_properties(child)
+                childs.append(properties)
+            else:
+                child_type = child.tag
+        return Object(object_id, name, object_type, x, y, width, height, rotation, gid, visible, template, child_type,
+                      properties, childs)
 
-    def create_layer(self, layer):
+    def create_layer(self, layer: ET.Element) -> Layer:
         layer_id = int_or_none(layer.attrib.get('id', None))
         name = layer.attrib.get('name', None)
         x = int_or_none(layer.attrib.get('x', None))
@@ -340,7 +349,7 @@ class Map:
         return Layer(layer_id, name, x, y, width, height, opacity, visible,
                      offsetx, offsety, properties, data, childs)
 
-    def create_imagelayer(self, layer):
+    def create_imagelayer(self, layer: ET.Element) -> ImageLayer:
         imagelayer_id = int_or_none(layer.attrib.get('id', None))
         name = layer.attrib.get('name', None)
         offsetx = float_or_none(layer.attrib.get('offsetx', None))
@@ -363,7 +372,7 @@ class Map:
                 childs.append(image)
         return ImageLayer(imagelayer_id, name, offsetx, offsety, x, y, opacity, visible, properties, image, childs)
 
-    def create_group(self, group):
+    def create_group(self, group: ET.Element) -> Group:
         group_id = int_or_none(group.attrib.get('id', None))
         name = group.attrib.get('name', None)
         offsetx = float_or_none(group.attrib.get('offsetx', None))
@@ -405,7 +414,7 @@ class Map:
         return Group(group_id, name, offsetx, offsety, opacity, visible, properties,
                      layers, objectgroups, imagelayers, groups, childs)
 
-    def fill_wangsets(self, wangsets):
+    def fill_wangsets(self, wangsets: ET.Element) -> WangSets:
         result = []
         for wangset in wangsets:
             if wangset.tag == 'wangset':
