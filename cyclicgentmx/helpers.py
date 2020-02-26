@@ -1,5 +1,6 @@
 from typing import List
 import sys
+from collections import defaultdict
 
 
 P28 = 2**8
@@ -44,3 +45,12 @@ def get_size(obj, seen=None):
 
 def four_bytes(bytes: List[int]) -> int:
     return bytes[0] + bytes[1] * P28 + bytes[2] * P216 + bytes[3] * P224
+
+
+def count_types(elements: list):
+    if not isinstance(elements, list):
+        raise TypeError('elements must be list')
+    result = defaultdict(int)
+    for element in elements:
+        result[type(element)] += 1
+    return result

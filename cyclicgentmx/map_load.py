@@ -5,9 +5,9 @@ import gzip
 import zlib
 import pathlib
 import xml.etree.ElementTree as ET
-from cyclicgentmx.tmx_types import Color, Property, TileSet, TileOffset, Grid, Image, Data, Chunk, Terrain,\
-    Tile, Object, Frame, ObjectGroup, Layer, ImageLayer, Group, WangSet, WangTile, WangColor, WangID, TerrainTypes,\
-    Properties, WangSets, Animation, Objects, MapIntValidationError
+from cyclicgentmx.tmx_types import Color, Property, TileSet, TileOffset, Grid, Image, Data, Chunk, Terrain, \
+    Tile, Object, Frame, ObjectGroup, Layer, ImageLayer, Group, WangSet, WangTile, WangColor, WangID, TerrainTypes, \
+    Properties, WangSets, Animation, Objects
 from cyclicgentmx.helpers import int_or_none, float_or_none, four_bytes
 
 
