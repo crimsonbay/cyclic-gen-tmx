@@ -54,3 +54,7 @@ def count_types(elements: list):
     for element in elements:
         result[type(element)] += 1
     return result
+
+
+def clear_dict_from_none(original: dict) -> dict:
+    return {k: str(v) for k, v in original.items() if v is not None}

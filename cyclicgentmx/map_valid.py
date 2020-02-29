@@ -1,12 +1,11 @@
 from __future__ import annotations
 import itertools
 import pathlib
-from cyclicgentmx.map_load import MapLoad
 from cyclicgentmx.tmx_types import Layer, MapValidationError, MapIntValidationError, Properties, TileSet, \
     ObjectGroup, ImageLayer, Group
 
 
-class MapValid(MapLoad):
+class MapValid:
 
     MAP_MANDATORY_FIELDS = frozenset(('orientation', 'width', 'height', 'tilewidth', 'tileheight', 'version',
                                       'tiledversion', 'compressionlevel', 'renderorder', 'nextlayerid', 'nextobjectid'))

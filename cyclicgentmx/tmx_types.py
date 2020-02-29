@@ -1,7 +1,13 @@
 from __future__ import annotations
 from typing import Any, List, Union, Optional
 from dataclasses import dataclass
+import pathlib
+import base64
+import gzip
+import zlib
+import xml.etree.ElementTree as ET
 from cyclicgentmx.helpers import count_types
+from cyclicgentmx.helpers import int_or_none, float_or_none, four_bytes
 
 
 class Color:
@@ -121,22 +127,24 @@ class Chunk:
 
 @dataclass
 class Data:
-    encoding: str
-    compression: str
+    encoding: Optional[str]
+    compression: Optional[str]
     tiles: List[int]
     chunks: List[Chunk]
     childs: Union[List[int], List[Chunk]]
 
     def validate(self):
-        if not (isinstance(self.encoding, str) and self.encoding in('csv', 'base64')):
+        if not (self.encoding is None or isinstance(self.encoding, str) and self.encoding in ('csv', 'base64')):
             raise MapValidationError('Field "encoding" must be in ("csv", "base64")')
-        if not (isinstance(self.compression, str) and self.compression in('csv', 'base64')):
+        if not (self.encoding != 'base64'
+                or (self.compression is None
+                    or isinstance(self.compression, str) and self.compression in('gzip', 'zlib'))):
             raise MapValidationError('Field "compression" must be in ("gzip", "zlib")')
         if not (isinstance(self.tiles, list) and all(isinstance(tile, int) for tile in self.tiles)):
             raise MapValidationError('Field "tiles" must be list of int type')
         if not (isinstance(self.chunks, list) and all(isinstance(chunk, Chunk) for chunk in self.chunks)):
             raise MapValidationError('Field "tiles" must be list of Chunk type')
-        if not (isinstance(self.childs, list) and 0 < len(self.childs) < 2
+        if not (isinstance(self.childs, list)
                 and (all(isinstance(child, int) for child in self.childs) or
                      all(isinstance(child, Chunk) for child in self.childs))):
             raise MapValidationError('Field "childs" must be list of int or list of Chunk type with 0 < len < 2')
@@ -145,6 +153,50 @@ class Data:
                                      'and other "tiles" or "chunks" must be None')
         if self.chunks:
             self.chunks.validate()
+
+    @classmethod
+    def from_element(cls, data: ET.Element) -> Data:
+        encoding = data.attrib.get('encoding', None)
+        compression = data.attrib.get('compression')
+        tiles = []
+        chunks = []
+        infinite = bool(data.find('chunk') is not None)
+        if infinite:
+            for child in data:
+                x = int_or_none(child.attrib.get('x'))
+                y = int_or_none(child.attrib.get('y'))
+                width = int_or_none(child.attrib.get('width'))
+                height = int_or_none(child.attrib.get('height'))
+                child_tiles = cls._fill_tiles(child, encoding, compression)
+                child_object = Chunk(x, y, width, height, child_tiles)
+                chunks.append(child_object)
+            childs = chunks
+        else:
+            tiles = cls._fill_tiles(data, encoding, compression)
+            childs = tiles
+        return cls(encoding, compression, tiles, chunks, childs)
+
+    @classmethod
+    def _fill_tiles(cls, data: ET.Element, encoding: str, compression: str) -> List[int]:
+        tiles = []
+        if encoding is None:
+            for child in data:
+                tiles.append(int_or_none(child.attrib.get('gid', 0)))
+        elif encoding == 'csv':
+            tiles = list(map(int, data.text.strip().split(',')))
+        elif encoding == 'base64':
+            data = base64.b64decode(data.text.strip().encode("latin1"))
+            if compression == 'gzip':
+                data = gzip.decompress(data)
+            elif compression == 'zlib':
+                data = zlib.decompress(data)
+            elif compression is not None:
+                raise ValueError("Compression format {} not supported.".format(compression))
+            data = zip(data[::4], data[1::4], data[2::4], data[3::4])
+            tiles = list(map(four_bytes, data))
+        else:
+            raise ValueError("Encoding format {} not supported.". format(encoding))
+        return tiles
 
 
 @dataclass
@@ -163,7 +215,7 @@ class Image:
         if not isinstance(self.source, str):
             raise MapStrValidationError('source')
         if not (self.trans is None or isinstance(self.trans, Color)):
-            raise MapValidationError('Field "source" must be Color type')
+            raise MapValidationError('Field "trans" must be Color type')
         if not all(isinstance(field, int) and field > 0 for field in (self.width, self.height)):
             raise MapIntValidationError(('width', 'height'), 0)
         if not (self.data is None or isinstance(self.data, Data)):
@@ -175,6 +227,22 @@ class Image:
 
         for child in self.childs:
             child.validate()
+
+    @classmethod
+    def from_element(cls, image: ET.Element) -> Image:
+        image_format = image.attrib.get('format')
+        source = image.attrib.get('source')
+        trans = Color(image.attrib.get('trans')) if image.attrib.get('trans', None) else None
+        width = int_or_none(image.attrib.get('width'))
+        height = int_or_none(image.attrib.get('height'))
+        data = None
+        childs = []
+
+        for child in image:
+            if child.tag == 'data':
+                data = Data.from_element(child)
+                childs.append(data)
+        return cls(image_format, source, trans, width, height, data, childs)
 
 
 @dataclass
@@ -209,7 +277,7 @@ class Object:
     height: Optional[float]
     rotation: Optional[float]
     gid: Optional[int]
-    visible: Optional[bool]
+    visible: bool
     template: Optional[str]
     child_type: Optional[str]
     properties: Optional[Properties]
@@ -234,13 +302,38 @@ class Object:
         if not (self.properties is None or isinstance(self.properties, Properties)):
             raise MapValidationError('Field "properties" must be None or Properties type')
         if self.visible:
-            return MapValidationError('Field "visible" must be None or False')
+            return MapValidationError('Field "visible" must be bool type')
         if not (isinstance(self.childs, list) and len(self.childs) < 2
                 and all(isinstance(child, Properties) for child in self.childs)):
             raise MapValidationError('Fields "name", "type", "template" and "child_type" must be List[Properties]'
                                      ' type with len < 2')
         for child in self.childs:
             child.validate()
+
+    @classmethod
+    def from_element(cls, object: ET.Element) -> Object:
+        object_id = object.attrib.get('id')
+        name = object.attrib.get('id', None)
+        object_type = object.attrib.get('id', None)
+        x = object.attrib.get('x')
+        y = object.attrib.get('y')
+        width = float_or_none(object.attrib.get('width', None))
+        height = float_or_none(object.attrib.get('height', None))
+        rotation = float_or_none(object.attrib.get('rotation', None))
+        gid = int_or_none(object.attrib.get('gid', None))
+        visible = bool(int(object.attrib.get('visible', 1)))
+        template = object.attrib.get('template', None)
+        child_type = None
+        properties = None
+        childs = []
+        for child in object:
+            if child.tag == 'properties':
+                properties = Properties.from_element(child)
+                childs.append(properties)
+            else:
+                child_type = child.tag
+        return cls(object_id, name, object_type, x, y, width, height, rotation, gid, visible, template, child_type,
+                      properties, childs)
 
 @dataclass
 class Objects:
@@ -263,7 +356,7 @@ class ObjectGroup:
     width: Optional[int]
     height: Optional[int]
     opacity: Optional[float]
-    visible: Optional[bool]
+    visible: bool
     offsetx: Optional[float]
     offsety: Optional[float]
     draworder: Optional[str]
@@ -285,7 +378,7 @@ class ObjectGroup:
         if not (self.offsety is None and self.offsety is None or self.offsety is not None and self.offsety is not None):
             raise MapValidationError('Fields "offsetx" and "offsety" must be None or float together')
         if self.visible:
-            return MapValidationError('Field "visible" must be None or False')
+            return MapValidationError('Field "visible" must be bool type')
         if not (self.draworder is None or self.draworder != "index"):
             return MapValidationError('Field "draworder" must be None or False')
         if not (self.properties is None or isinstance(self.properties, Properties)):
@@ -299,6 +392,36 @@ class ObjectGroup:
             raise MapValidationError('Properties type must be < 2 times in "childs"')
         for child in self.childs:
             child.validate()
+
+    @classmethod
+    def from_element(cls, objectgroup: ET.Element) -> ObjectGroup:
+        objectgroup_id = int(objectgroup.attrib.get('id'))
+        name = objectgroup.attrib.get('name')
+        color = Color(objectgroup.attrib.get('color', None)) if objectgroup.attrib.get('color', None) else None
+        x = int_or_none(objectgroup.attrib.get('x', None))
+        y = int_or_none(objectgroup.attrib.get('y', None))
+        width = int_or_none(objectgroup.attrib.get('width', None))
+        height = int_or_none(objectgroup.attrib.get('height', None))
+        opacity = float_or_none(objectgroup.attrib.get('opacity', None))
+        visible = bool(int(objectgroup.attrib.get('visible', 1)))
+        offsetx = float_or_none(objectgroup.attrib.get('offsetx', None))
+        offsety = float_or_none(objectgroup.attrib.get('offsety', None))
+        draworder = objectgroup.attrib.get('draworder', None)
+
+        properties = None
+        objects = []
+        childs = []
+
+        for child in objectgroup:
+            if child.tag == 'properties':
+                properties = Properties.from_element(child)
+                childs.append(properties)
+            elif child.tag == 'object':
+                child_object = Object.from_element(child)
+                objects.append(child_object)
+                childs.append(child_object)
+        return cls(objectgroup_id, name, color, x, y, width, height, opacity, visible,
+                           offsetx, offsety, draworder, properties, Objects(objects), childs)
 
 
 
@@ -321,6 +444,16 @@ class Animation:
             raise MapValidationError('Field "childs" must be list of Frame')
         for child in self.childs:
             child.validate()
+
+    @classmethod
+    def from_element(cls, animation: ET.Element) -> Animation:
+        result = []
+        for frame in animation:
+            if frame.tag == 'frame':
+                tileid = int(frame.attrib.get('tileid'))
+                duration = int(frame.attrib.get('tileid'))
+                result.append(Frame(tileid, duration))
+        return cls(result)
 
 
 @dataclass
@@ -366,6 +499,39 @@ class Tile:
             raise MapValidationError('Image type must be < 2 times in "childs"')
         for child in self.childs:
             child.validate()
+
+    @classmethod
+    def from_element(cls, tile: ET.Element) -> Tile:
+        tile_id = int(tile.attrib.get('id'))
+        tile_type = tile.attrib.get('type', None)
+        terrain = tile.attrib.get('terrain', None)
+        if terrain is not None:
+            terrain = [int(element) if element else None for element in terrain.split(',')]
+        probability = float_or_none(tile.attrib.get('probability', None))
+
+        properties = None
+        image = None
+        objectgroup = None
+        animation = None
+        childs = []
+
+        for child in tile:
+            if child.tag == 'properties':
+                child_object = Properties.from_element(child)
+                properties = child_object
+            elif child.tag == 'image':
+                child_object = Image.from_element(child)
+                image = child_object
+            elif child.tag == 'objectgroup':
+                child_object = ObjectGroup.from_element(child)
+                objectgroup = child_object
+            elif child.tag == 'animation':
+                child_object = Animation.from_element(child)
+                animation = child_object
+            else:
+                continue
+            childs.append(child_object)
+        return cls(tile_id, tile_type, terrain, probability, properties, image, objectgroup, animation, childs)
 
 
 @dataclass
@@ -456,16 +622,58 @@ class TerrainTypes:
         for child in self.childs:
             child.validate()
 
+    @classmethod
+    def from_element(cls, terraintypes: ET.Element) -> TerrainTypes:
+        result = []
+        for terrain in terraintypes:
+            if terrain.tag == 'terrain':
+                name = terrain.attrib.get("name")
+                tile = terrain.attrib.get("tile")
+                properties = None
+                childs = []
+                for terrain_properties in terrain:
+                    if terrain_properties.tag == 'properties':
+                        properties = Properties.from_element(terrain_properties)
+                        childs.append(properties)
+                    else:
+                        continue
+                result.append(Terrain(name, tile, properties, childs))
+        return cls(result)
+
 
 @dataclass
 class Properties:
     childs: List[Property]
 
     def validate(self):
-        if not (isinstance(self.childs, list) and len(self.childs) < 2 and all(isinstance(child, Property) for child in self.childs)):
+        if not (isinstance(self.childs, list) and all(isinstance(child, Property) for child in self.childs)):
             raise MapValidationError('Field "childs" must be list of Property')
         for child in self.childs:
             child.validate()
+
+    @classmethod
+    def from_element(cls, properties: ET.Element) -> Properties:
+        result = []
+        for prop in properties:
+            prop_type = prop.attrib.get('type', 'string')
+            if prop_type == 'int':
+                value = int(prop.attrib.get('value'))
+            elif prop_type == 'float':
+                value = float(prop.attrib.get('value'))
+            elif prop_type == 'bool':
+                value = prop.attrib.get('value') == 'true'
+            elif prop_type == 'color':
+                value = Color(prop.attrib.get('value'))
+            elif prop_type == 'file':
+                value = prop.attrib.get('value')
+            else:
+                continue
+            result.append(Property(prop.attrib.get('name'),
+                                   prop_type,
+                                   value
+                                   )
+                          )
+        return cls(result)
 
 
 @dataclass
@@ -475,6 +683,45 @@ class WangSets:
     def validate(self):
         if not (isinstance(self.childs, list) and all(isinstance(child, WangSet) for child in self.childs)):
             raise MapValidationError('Field "childs" must be list of WangSet')
+
+    @classmethod
+    def from_element(cls, wangsets: ET.Element) -> WangSets:
+        result = []
+        for wangset in wangsets:
+            if wangset.tag == 'wangset':
+                name = wangset.attrib.get('name', None)
+                tile = int_or_none(wangset.attrib.get('tile', None))
+                wangcornercolors = []
+                wangedgecolor = []
+                wangtiles = []
+                childs = []
+                for child in wangset:
+                    if child.tag == 'wangcornercolors':
+                        name = child.attrib.get('name', None)
+                        color = Color(child.attrib.get('color', None)) if child.attrib.get('color', None) else None
+                        child_tile = child.attrib.get('tile', None)
+                        probability = float_or_none(child.attrib.get('probability', None))
+                        wangcolor = WangColor(name, color, child_tile, probability)
+                        wangcornercolors.append(wangcolor)
+                        childs.append(wangcolor)
+                    elif child.tag == 'wangedgecolor':
+                        name = child.attrib.get('name', None)
+                        color = Color(child.attrib.get('color', None)) if child.attrib.get('color', None) else None
+                        child_tile = child.attrib.get('tile', None)
+                        probability = float_or_none(child.attrib.get('probability', None))
+                        wangcolor = WangColor(name, color, child_tile, probability)
+                        wangedgecolor.append(wangcolor)
+                        childs.append(wangcolor)
+                    elif child.tag == 'wangtile':
+                        tileid = wangset.attrib.get('tileid', None)
+                        wangid = wangset.attrib.get('wangid', None)
+                        if wangid:
+                            wangid = WangID(wangid)
+                        wangtile = WangTile(tileid, wangid)
+                        wangtiles.append(wangtile)
+                        childs.append(wangtile)
+                result.append(WangSet(name, tile, wangcornercolors, wangedgecolor, wangtiles, childs))
+        return cls(result)
 
 
 @dataclass
@@ -547,6 +794,70 @@ class TileSet:
         for child in self.childs:
             child.validate()
 
+    @classmethod
+    def from_element(cls, tileset: ET.Element, file_dir) -> TileSet:
+        firstgid = int(tileset.attrib.get('firstgid'))
+        source = tileset.attrib.get('source', None)
+        if source:
+            source_with_path = pathlib.PurePath(file_dir, source).as_posix()
+            tileset_tree = ET.parse(source_with_path)
+            tileset_root = tileset_tree.getroot()
+        else:
+            tileset_root = tileset
+        name = tileset_root.attrib.get('name')
+        tilewidth = int(tileset_root.attrib.get('tilewidth'))
+        tileheight = int(tileset_root.attrib.get('tileheight'))
+        spacing = int_or_none(tileset_root.attrib.get('spacing', None))
+        margin = int_or_none(tileset_root.attrib.get('margin', None))
+        tilecount = int_or_none(tileset_root.attrib.get('tilecount'))
+        columns = int_or_none(tileset_root.attrib.get('columns'))
+
+        version = tileset_root.attrib.get('version', None)
+        tiledversion = tileset_root.attrib.get('tiledversion', None)
+
+        tileoffset = None
+        grid = None
+        properties = None
+        image = None
+        terraintypes = None
+        tiles = []
+        wangsets = None
+        childs = []
+        for child in tileset_root:
+            if child.tag == 'tileoffset':
+                x = int_or_none(child.attrib.get('x'))
+                y = int_or_none(child.attrib.get('y'))
+                child_object = TileOffset(x, y)
+                tileoffset = child_object
+            elif child.tag == 'grid':
+                orientation = child.attrib.get('orientation')
+                width = int_or_none(child.attrib.get('width'))
+                height = int_or_none(child.attrib.get('height'))
+                child_object = Grid(orientation, width, height)
+                grid = child_object
+            elif child.tag == 'properties':
+                child_object = Properties.from_element(child)
+                properties = child_object
+            elif child.tag == 'image':
+                child_object = Image.from_element(child)
+                image = child_object
+            elif child.tag == 'terraintypes':
+                child_object = TerrainTypes.from_element(child)
+                terraintypes = child_object
+            elif child.tag == 'tile':
+                child_object = Tile.from_element(child)
+                tiles.append(child_object)
+            elif child.tag == 'wangsets':
+                child_object = WangSets.from_element(child)
+                wangsets = child_object
+            else:
+                continue
+            childs.append(child_object)
+
+        return cls(firstgid, source, name, tilewidth, tileheight, spacing, margin, tilecount, columns,
+                       version, tiledversion, tileoffset, grid, properties, image, terraintypes,
+                       tiles, wangsets, childs)
+
 
 @dataclass
 class Layer:
@@ -557,7 +868,7 @@ class Layer:
     width: int
     height: int
     opacity: Optional[float]
-    visible: Optional[bool]
+    visible: bool
     offsetx: Optional[float]
     offsety: Optional[float]
     properties: Optional[Properties]
@@ -577,8 +888,8 @@ class Layer:
             raise MapFloatValidationError(('opacity', 'offsetx', 'offsety'), none=True)
         if not (self.offsety is None and self.offsety is None or self.offsety is not None and self.offsety is not None):
             raise MapValidationError('Fields "offsetx" and "offsety" must be None or float together')
-        if self.visible:
-            return MapValidationError('Field "visible" must be None or False')
+        if not isinstance(self.visible, bool):
+            return MapValidationError('Field "visible" must be bool type')
         if not (isinstance(self.childs, list)
                 and (all(isinstance(child, Properties) or
                          isinstance(child, Data) for child in self.childs))):
@@ -594,6 +905,33 @@ class Layer:
         for child in self.childs:
             child.validate()
 
+    @classmethod
+    def from_element(cls, layer: ET.Element) -> Layer:
+        layer_id = int_or_none(layer.attrib.get('id', None))
+        name = layer.attrib.get('name', None)
+        x = int_or_none(layer.attrib.get('x', None))
+        y = int_or_none(layer.attrib.get('y', None))
+        width = int_or_none(layer.attrib.get('width', None))
+        height = int_or_none(layer.attrib.get('height', None))
+        opacity = float_or_none(layer.attrib.get('opacity', None))
+        visible = bool(int(layer.attrib.get('visible', 1)))
+        offsetx = float_or_none(layer.attrib.get('offsetx', None))
+        offsety = float_or_none(layer.attrib.get('offsety', None))
+
+        properties = None
+        data = None
+        childs = []
+
+        for child in layer:
+            if child.tag == 'properties':
+                properties = Properties.from_element(child)
+                childs.append(properties)
+            elif child.tag == 'data':
+                data = Data.from_element(child)
+                childs.append(data)
+        return cls(layer_id, name, x, y, width, height, opacity, visible,
+                     offsetx, offsety, properties, data, childs)
+
 
 @dataclass
 class ImageLayer:
@@ -607,7 +945,7 @@ class ImageLayer:
     visible: bool
     properties: Properties
     image: Image
-    child: List[Union[Properties, Image]]
+    childs: List[Union[Properties, Image]]
 
     def validate(self):
         if not (isinstance(self.id, int) and self.id > 0):
@@ -620,8 +958,8 @@ class ImageLayer:
             raise MapFloatValidationError(('opacity', 'offsetx', 'offsety'), none=True)
         if not (self.offsety is None and self.offsety is None or self.offsety is not None and self.offsety is not None):
             raise MapValidationError('Fields "offsetx" and "offsety" must be None or float together')
-        if self.visible:
-            return MapValidationError('Field "visible" must be None or False')
+        if not isinstance(self.visible, bool):
+            return MapValidationError('Field "visible" must be bool type')
         if not (isinstance(self.childs, list)
                 and (all(isinstance(child, Properties) or
                          isinstance(child, Image) for child in self.childs))):
@@ -636,6 +974,30 @@ class ImageLayer:
             raise MapValidationError('Image type must be < 2 times in "childs"')
         for child in self.childs:
             child.validate()
+
+    @classmethod
+    def from_element(cls, layer: ET.Element) -> ImageLayer:
+        imagelayer_id = int_or_none(layer.attrib.get('id', None))
+        name = layer.attrib.get('name', None)
+        offsetx = float_or_none(layer.attrib.get('offsetx', None))
+        offsety = float_or_none(layer.attrib.get('offsety', None))
+        x = int_or_none(layer.attrib.get('x', None))
+        y = int_or_none(layer.attrib.get('y', None))
+        opacity = float_or_none(layer.attrib.get('opacity', None))
+        visible = bool(int(layer.attrib.get('visible', 1)))
+
+        properties = None
+        image = None
+        childs = []
+
+        for child in layer:
+            if child.tag == 'properties':
+                properties = Properties.from_element(child)
+                childs.append(properties)
+            elif child.tag == 'image':
+                image = Image.from_element(child)
+                childs.append(image)
+        return cls(imagelayer_id, name, offsetx, offsety, x, y, opacity, visible, properties, image, childs)
 
 
 @dataclass
@@ -662,15 +1024,15 @@ class Group:
             raise MapFloatValidationError(('opacity', 'offsetx', 'offsety'), none=True)
         if not (self.offsety is None and self.offsety is None or self.offsety is not None and self.offsety is not None):
             raise MapValidationError('Fields "offsetx" and "offsety" must be None or float together')
-        if self.visible:
-            return MapValidationError('Field "visible" must be None or False')
-        if not (self.layers is None or isinstance(self.layers, Layer)):
-            raise MapValidationError('Field "layers" must be None or Layer type')
-        if not (self.objectgroups is None or isinstance(self.objectgroups, ObjectGroup)):
-            raise MapValidationError('Field "objectgroups" must be None or ObjectGroup type')
-        if not (self.imagelayers is None or isinstance(self.imagelayers, ImageLayer)):
+        if not isinstance(self.visible, bool):
+            return MapValidationError('Field "visible" must be bool type')
+        if not all(isinstance(layer, Layer) for layer in self.layers):
+            raise MapValidationError('Field "layers" must be list of Layer')
+        if not all(isinstance(objectgroup, ObjectGroup) for objectgroup in self.objectgroups):
+            raise MapValidationError('Field "objectgroups" must be list of ObjectGroup type')
+        if not all(isinstance(imagelayer, ImageLayer) for imagelayer in self.imagelayers):
             raise MapValidationError('Field "imagelayers" must be None or ImageLayer type')
-        if not (self.groups is None or isinstance(self.groups, Group)):
+        if not all(isinstance(group, Group) for group in self.groups):
             raise MapValidationError('Field "groups" must be None or Group type')
         if not (isinstance(self.childs, list)
                 and (all(isinstance(child, Properties) or
@@ -686,6 +1048,48 @@ class Group:
             raise MapValidationError('Properties type must be < 2 times in "childs"')
         for child in self.childs:
             child.validate()
+    @classmethod
+    def from_element(cls, group: ET.Element) -> Group:
+        group_id = int_or_none(group.attrib.get('id', None))
+        name = group.attrib.get('name', None)
+        offsetx = float_or_none(group.attrib.get('offsetx', None))
+        offsety = float_or_none(group.attrib.get('offsety', None))
+        opacity = float_or_none(group.attrib.get('opacity', None))
+        visible = bool(int(group.attrib.get('visible', 1)))
+
+        properties = None
+        group_layers = []
+        layers = []
+        objectgroups = []
+        imagelayers = []
+        groups = []
+        childs = []
+
+        for child in group:
+            if child.tag == 'properties':
+                child_object = Properties.from_element(child)
+                properties = child_object
+            elif child.tag == 'layer':
+                child_object = Layer.from_element(child)
+                layers.append(child_object)
+                group_layers.append(child_object)
+            elif child.tag == 'objectgroup':
+                child_object = ObjectGroup.from_element(child)
+                objectgroups.append(child_object)
+                group_layers.append(child_object)
+            elif child.tag == 'imagelayer':
+                child_object = ImageLayer.from_element(child)
+                imagelayers.append(child_object)
+                group_layers.append(child_object)
+            elif child.tag == 'group':
+                child_object = cls.from_element(child)
+                groups.append(child_object)
+                group_layers.append(child_object)
+            else:
+                continue
+            childs.append(child_object)
+        return cls(group_id, name, offsetx, offsety, opacity, visible, properties,
+                     layers, objectgroups, imagelayers, groups, childs)
 
 
 class MapValidationError(Exception):
