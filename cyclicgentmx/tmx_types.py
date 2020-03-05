@@ -421,6 +421,8 @@ class Object:
 
         }
         root = ET.Element('object', attrib=clear_dict_from_none(attrib))
+        for child in self.childs:
+            root.append(child.get_element())
         if self.figure_type:
             if self.points:
                 points = [','.join(map(str,field)) for field in self.points]
