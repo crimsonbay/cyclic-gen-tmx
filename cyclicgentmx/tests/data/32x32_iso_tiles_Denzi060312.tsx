@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <tileset version="1.2" tiledversion="1.3.1" name="32x32_iso_tiles_Denzi060312" tilewidth="16" tileheight="16" spacing="2" margin="1" tilecount="196" columns="14">
- <image source="32x32_iso_tiles_Denzi060312.PNG" width="256" height="256"/>
+ <tileoffset x="1" y="2"/>
+ <grid orientation="orthogonal" width="16" height="17"/>
+ <image source="32x32_iso_tiles_Denzi060312.PNG" trans="ff00ff" width="256" height="256"/>
  <terraintypes>
   <terrain name="New Terrain" tile="91"/>
   <terrain name="New Terrain" tile="148">
@@ -147,7 +149,11 @@
  <tile id="132" terrain=",1,,1"/>
  <tile id="133" terrain="1,1,1,1"/>
  <tile id="134" terrain="1,,1,"/>
- <tile id="146" terrain=",1,,"/>
+ <tile id="146" terrain=",1,,">
+  <objectgroup draworder="index" id="2">
+   <object id="1" x="-97" y="-90" width="134" height="196"/>
+  </objectgroup>
+ </tile>
  <tile id="147" terrain="1,1,,"/>
  <tile id="148" terrain="1,,,"/>
  <wangsets>

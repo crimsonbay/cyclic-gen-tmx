@@ -1,15 +1,7 @@
 from __future__ import annotations
-from typing import List
-import base64
-import gzip
-import zlib
-import itertools
-import pathlib
 import xml.etree.ElementTree as ET
-from cyclicgentmx.map_valid import MapValid
-from cyclicgentmx.tmx_types import Layer, Data, MapValidationError, MapIntValidationError, Color, Properties, TileSet,\
-    ObjectGroup, ImageLayer, Group
-from cyclicgentmx.helpers import clear_dict_from_none
+from cyclicgentmx.tmx_types import Properties, TileSet
+from cyclicgentmx.helpers import clear_dict_from_none, indent
 
 
 class MapSave:
@@ -33,6 +25,11 @@ class MapSave:
             'nextobjectid': self.nextobjectid,
             'infinite': '1' if self.infinite else '0'
         }
-        root = ET.Element("map", attrib=clear_dict_from_none(attrib))
+        root = ET.Element('map', attrib=clear_dict_from_none(attrib))
+        for child in self.childs:
+            if isinstance(child, Properties) or isinstance(child, TileSet):
+                root.append(child.get_element())
+
+        indent(root)
         tree = ET.ElementTree(root)
         tree.write(map_name, encoding="UTF-8", xml_declaration=True)

@@ -6,8 +6,7 @@ import base64
 import gzip
 import zlib
 import xml.etree.ElementTree as ET
-from cyclicgentmx.helpers import count_types
-from cyclicgentmx.helpers import int_or_none, float_or_none, four_bytes
+from cyclicgentmx.helpers import count_types, int_or_none, float_or_none, four_bytes, clear_dict_from_none
 
 
 class Color:
@@ -95,6 +94,9 @@ class TileOffset:
         if not all(isinstance(field, int) for field in (self.x, self.y)):
             raise MapIntValidationError(('x', 'y'))
 
+    def get_element(self):
+        return ET.Element('tileoffset', attrib={'x': str(self.x), 'y': str(self.y)})
+
 
 @dataclass
 class Grid:
@@ -107,6 +109,11 @@ class Grid:
             raise MapValidationError('Field orientation must be in ("orthogonal", "isometric")')
         if not all(isinstance(field, int) and field > 0 for field in (self.width, self.height)):
             raise MapIntValidationError(('width', 'height'), 0)
+
+    def get_element(self):
+        return ET.Element('grid', attrib={'orientation': self.orientation,
+                                          'width': str(self.width),
+                                          'height': str(self.height)})
 
 
 @dataclass
@@ -123,6 +130,12 @@ class Chunk:
         if not (isinstance(self.tiles, list) and all(isinstance(tile, int) for tile in self.tiles)
                 and len(self.tiles) != self.width * self.height):
             raise MapValidationError('Field "tiles" must be list of int type and len must be equal "width" * "height"')
+
+    def get_element(self):
+        root = ET.Element('chunk', attrib={'x': str(self.x), 'y': str(self.y),
+                                           'width': str(self.width), 'height': str(self.height)})
+        root.text = ''.join(map(str, self.tiles))
+        return root
 
 
 @dataclass
@@ -198,6 +211,24 @@ class Data:
             raise ValueError("Encoding format {} not supported.". format(encoding))
         return tiles
 
+    def get_element(self):
+        encoding: Optional[str]
+        compression: Optional[str]
+        tiles: List[int]
+        chunks: List[Chunk]
+        childs: Union[List[int], List[Chunk]]
+        attrib = {
+            'encoding': self.encoding,
+            'compression': self.compression,
+        }
+        root = ET.Element('data', attrib=clear_dict_from_none(attrib))
+        if self.tiles:
+            root.text = ''.join(map(str, self.tiles))
+        else:
+            for child in self.childs:
+                root.append(child.get_element())
+        return root
+
 
 @dataclass
 class Image:
@@ -244,6 +275,17 @@ class Image:
                 childs.append(data)
         return cls(image_format, source, trans, width, height, data, childs)
 
+    def get_element(self):
+        attrib = {'format': self.format,
+                  'source': self.source,
+                  'trans': self.trans.without_sharp_hex_color,
+                  'width': str(self.width),
+                  'height': str(self.height)}
+        root =  ET.Element('image', attrib=clear_dict_from_none(attrib))
+        if self.data:
+            root.append(self.data.get_element())
+        return root
+
 
 @dataclass
 class Terrain:
@@ -265,12 +307,18 @@ class Terrain:
         for child in self.childs:
             child.validate()
 
+    def get_element(self):
+        root = ET.Element('terrain', attrib={'name': self.name, 'tile': self.tile})
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
+
 
 @dataclass
 class Object:
     id: int
     name: Optional[str]
-    type: Optional[str]
+    object_type: Optional[str]
     x: float
     y: float
     width: Optional[float]
@@ -279,7 +327,8 @@ class Object:
     gid: Optional[int]
     visible: bool
     template: Optional[str]
-    child_type: Optional[str]
+    figure_type: Optional[str]
+    points: List[List[float, float]]
     properties: Optional[Properties]
     childs: List[Properties]
 
@@ -294,10 +343,10 @@ class Object:
                    for field in (self.width, self.height, self.rotation)):
             raise MapFloatValidationError(('width', 'height', 'rotation'), 0, none=True)
         if not all(self.field is None or isinstance(field, str)
-                   for field in (self.name, self.type, self.template, self.child_type)):
-            raise MapStrValidationError(('name', 'type', 'template', 'child_type'), none=True)
-        if self.child_type is None or self.child_type not in ('ellipse', 'point', 'polygon', 'polyline', 'text'):
-            raise MapValidationError('Field "child_type" must be None or in ("ellipse", "point", "polygon", '
+                   for field in (self.name, self.object_type, self.template, self.figure_type)):
+            raise MapStrValidationError(('name', 'object_type', 'template', 'figure_type'), none=True)
+        if self.figure_type is None or self.figure_type not in ('ellipse', 'point', 'polygon', 'polyline', 'text'):
+            raise MapValidationError('Field "figure_type" must be None or in ("ellipse", "point", "polygon", '
                                      '"polyline", "text")')
         if not (self.properties is None or isinstance(self.properties, Properties)):
             raise MapValidationError('Field "properties" must be None or Properties type')
@@ -305,25 +354,36 @@ class Object:
             return MapValidationError('Field "visible" must be bool type')
         if not (isinstance(self.childs, list) and len(self.childs) < 2
                 and all(isinstance(child, Properties) for child in self.childs)):
-            raise MapValidationError('Fields "name", "type", "template" and "child_type" must be List[Properties]'
+            raise MapValidationError('Field "childs" must be List[Properties]'
                                      ' type with len < 2')
+        if self.object_type in ('polygon', 'polyline'):
+            if not (isinstance(self.points, list)
+                    and all(isinstance(field, list)
+                            and len(field) == 2
+                            and all(isinstance(f, float) for f in field) for field in self.points)):
+                raise MapValidationError('Field "points" must be list of [float, float]')
+        else:
+            if not (isinstance(self.points, list)
+                    and len(self.points) == 0):
+                raise MapValidationError('Field "points" must be empty list')
         for child in self.childs:
             child.validate()
 
     @classmethod
     def from_element(cls, object: ET.Element) -> Object:
         object_id = object.attrib.get('id')
-        name = object.attrib.get('id', None)
-        object_type = object.attrib.get('id', None)
-        x = object.attrib.get('x')
-        y = object.attrib.get('y')
+        name = object.attrib.get('name', None)
+        object_type = object.attrib.get('type', None)
+        x = float(object.attrib.get('x'))
+        y = float(object.attrib.get('y'))
         width = float_or_none(object.attrib.get('width', None))
         height = float_or_none(object.attrib.get('height', None))
         rotation = float_or_none(object.attrib.get('rotation', None))
         gid = int_or_none(object.attrib.get('gid', None))
         visible = bool(int(object.attrib.get('visible', 1)))
         template = object.attrib.get('template', None)
-        child_type = None
+        figure_type = None
+        points = []
         properties = None
         childs = []
         for child in object:
@@ -331,9 +391,42 @@ class Object:
                 properties = Properties.from_element(child)
                 childs.append(properties)
             else:
-                child_type = child.tag
-        return cls(object_id, name, object_type, x, y, width, height, rotation, gid, visible, template, child_type,
-                      properties, childs)
+                figure_type = child.tag
+                points_str = child.attrib.get('points', None)
+                if points_str:
+                    points = points_str.split()
+                    points = [list(map(float, p.split(','))) for p in points]
+        return cls(object_id, name, object_type, x, y, width, height, rotation, gid, visible, template, figure_type,
+                   points, properties, childs)
+
+    def get_element(self):
+        attrib = {
+            'id': self.id,
+            'name': self.name,
+            'object_type': self.object_type,
+            'x': self.x,
+            'y': self.y,
+            'width': str(self.width) if self.width else None,
+            'height': str(self.height) if self.height else None,
+            'rotation': str(self.rotation) if self.rotation else None,
+            'gid': str(self.gid) if self.gid else None,
+            'visible': None if self.visible else '0',
+            'template': str(self.template) if self.template else None,
+
+        }
+        root = ET.Element('object', attrib=clear_dict_from_none(attrib))
+        if self.figure_type:
+            if self.points:
+                points = [','.join(map(str,field)) for field in self.points]
+                points = ' '.join(points)
+            else:
+                points = None
+            child_attrib = {
+                'points': points
+            }
+            root.append(ET.Element(self.figure_type, attrib=clear_dict_from_none(child_attrib)))
+        return root
+
 
 @dataclass
 class Objects:
@@ -423,6 +516,27 @@ class ObjectGroup:
         return cls(objectgroup_id, name, color, x, y, width, height, opacity, visible,
                            offsetx, offsety, draworder, properties, Objects(objects), childs)
 
+    def get_element(self):
+        attrib = {
+            'id': str(self.id),
+            'name': self.name if self.name else None,
+            'color': self.color.hex_color if self.color else None,
+            'x': str(self.x) if self.x else None,
+            'y': str(self.y) if self.y else None,
+            'width': str(self.width) if self.width else None,
+            'height': str(self.height) if self.height else None,
+            'opacity': str(self.opacity) if self.opacity else None,
+            'visible': None if self.visible else '0',
+            'offsetx': str(self.offsetx) if self.offsetx else None,
+            'offsety': str(self.offsety) if self.offsety else None,
+            'draworder': self.draworder
+
+        }
+        root = ET.Element('objectgroup', attrib=clear_dict_from_none(attrib))
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
+
 
 
 @dataclass
@@ -433,6 +547,9 @@ class Frame:
     def validate(self):
         if not (isinstance(self.tiled, int) and isinstance(self.duration, int)):
             raise MapIntValidationError(('tiled', 'duration'))
+
+    def get_element(self):
+        return ET.Element('frame', attrib={'tiled': str(self.tiled), 'duration': str(self.duration)})
 
 
 @dataclass
@@ -454,6 +571,12 @@ class Animation:
                 duration = int(frame.attrib.get('tileid'))
                 result.append(Frame(tileid, duration))
         return cls(result)
+
+    def get_element(self):
+        root = ET.Element('animation')
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
 
 
 @dataclass
@@ -533,13 +656,26 @@ class Tile:
             childs.append(child_object)
         return cls(tile_id, tile_type, terrain, probability, properties, image, objectgroup, animation, childs)
 
+    def get_element(self):
+        attrib = {
+            'id': self.id,
+            'type': self.type,
+            'terrain': ','.join(str(t) if t is not None else '' for t in self.terrain) if self.terrain else None,
+            'probability': str(self.probability) if self.probability else None
+        }
+        root = ET.Element('tile', attrib=clear_dict_from_none(attrib))
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
+
 
 @dataclass
 class WangColor:
     name: str
     color: Color
     tile: int
-    probability: float
+    probability: Optional[float]
+    color_type: str
 
     def validation(self):
         if not isinstance(self.name, str):
@@ -550,6 +686,17 @@ class WangColor:
             raise MapIntValidationError('tile')
         if not (self.probability is None or isinstance(self.probability, float) and self.probability > 0):
             raise MapFloatValidationError('probability', 0)
+        if not self.color_type in ('wangedgecolor', 'wangcornercolor'):
+            raise MapValidationError('Field "color_type must be in ("wangedgecolor", "wangcornercolor")')
+
+    def get_element(self):
+        attrib = {
+            'name': self.name,
+            'color': self.color.hex_color,
+            'tile': str(self.tile),
+            'probability': str(self.probability)
+        }
+        return ET.Element(self.color_type, attrib=clear_dict_from_none(attrib))
 
 
 class WangID:
@@ -582,6 +729,9 @@ class WangTile:
         if not isinstance(self.wangid, WangID):
             raise MapValidationError('Field wangid must be WangID type')
 
+    def get_element(self):
+        return ET.Element('wangtile', attrib={'tileid': str(self.tileid), 'wangid': self.wangid.idstr})
+
 
 @dataclass
 class WangSet:
@@ -610,6 +760,14 @@ class WangSet:
                 and (all(isinstance(child, WangColor) or
                          isinstance(child, WangTile) for child in self.childs))):
             raise MapValidationError('Field "childs" must be list of (WangColor or WangTile)')
+        for child in self.childs:
+            child.validation()
+
+    def get_element(self):
+        root = ET.Element('wangset', attrib={'name': str(self.name), 'tile': str(self.tile)})
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
 
 
 @dataclass
@@ -639,6 +797,12 @@ class TerrainTypes:
                         continue
                 result.append(Terrain(name, tile, properties, childs))
         return cls(result)
+
+    def get_element(self):
+        root = ET.Element('terraintypes')
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
 
 
 @dataclass
@@ -673,7 +837,22 @@ class Properties:
                                    value
                                    )
                           )
+        print(result)
         return cls(result)
+
+    def get_element(self):
+        root = ET.Element('properties')
+        for child in self.childs:
+            prop_type = child.property_type
+            if prop_type == 'bool':
+                value = 'true' if child.value else 'false'
+            elif prop_type == 'color':
+                value = child.value.hex_color()
+            else:
+                value = str(child.value)
+            child_element = ET.Element('property', attrib={'name': child.name, 'type': child.property_type, 'value': value})
+            root.append(child_element)
+        return root
 
 
 @dataclass
@@ -683,6 +862,8 @@ class WangSets:
     def validate(self):
         if not (isinstance(self.childs, list) and all(isinstance(child, WangSet) for child in self.childs)):
             raise MapValidationError('Field "childs" must be list of WangSet')
+        for child in self.childs:
+            child.validate()
 
     @classmethod
     def from_element(cls, wangsets: ET.Element) -> WangSets:
@@ -699,22 +880,22 @@ class WangSets:
                     if child.tag == 'wangcornercolors':
                         name = child.attrib.get('name', None)
                         color = Color(child.attrib.get('color', None)) if child.attrib.get('color', None) else None
-                        child_tile = child.attrib.get('tile', None)
+                        child_tile = int(child.attrib.get('tile', None))
                         probability = float_or_none(child.attrib.get('probability', None))
-                        wangcolor = WangColor(name, color, child_tile, probability)
+                        wangcolor = WangColor(name, color, child_tile, probability, 'wangcornercolor')
                         wangcornercolors.append(wangcolor)
                         childs.append(wangcolor)
                     elif child.tag == 'wangedgecolor':
                         name = child.attrib.get('name', None)
                         color = Color(child.attrib.get('color', None)) if child.attrib.get('color', None) else None
-                        child_tile = child.attrib.get('tile', None)
+                        child_tile = int(child.attrib.get('tile', None))
                         probability = float_or_none(child.attrib.get('probability', None))
-                        wangcolor = WangColor(name, color, child_tile, probability)
+                        wangcolor = WangColor(name, color, child_tile, probability, 'wangedgecolor')
                         wangedgecolor.append(wangcolor)
                         childs.append(wangcolor)
                     elif child.tag == 'wangtile':
-                        tileid = wangset.attrib.get('tileid', None)
-                        wangid = wangset.attrib.get('wangid', None)
+                        tileid = int(child.attrib.get('tileid', None))
+                        wangid = child.attrib.get('wangid', None)
                         if wangid:
                             wangid = WangID(wangid)
                         wangtile = WangTile(tileid, wangid)
@@ -722,6 +903,12 @@ class WangSets:
                         childs.append(wangtile)
                 result.append(WangSet(name, tile, wangcornercolors, wangedgecolor, wangtiles, childs))
         return cls(result)
+
+    def get_element(self):
+        root = ET.Element('wangsets')
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
 
 
 @dataclass
@@ -857,6 +1044,32 @@ class TileSet:
         return cls(firstgid, source, name, tilewidth, tileheight, spacing, margin, tilecount, columns,
                        version, tiledversion, tileoffset, grid, properties, image, terraintypes,
                        tiles, wangsets, childs)
+
+    def get_element(self):
+        if self.source:
+            attrib = {
+                'firstgid': str(self.firstgid),
+                'source': self.source,
+            }
+        else:
+            attrib = {
+                'firstgid': str(self.firstgid),
+                'source': self.source,
+                'name': self.name,
+                'tilewidth': str(self.tilewidth),
+                'tileheight': str(self.tileheight),
+                'spacing': str(self.spacing) if self.spacing else None,
+                'margin': str(self.margin) if self.spacing else None,
+                'tilecount': str(self.tilecount),
+                'columns': str(self.columns),
+                'version': self.version,
+                'tiledversion': self.tiledversion
+            }
+        root = ET.Element('tileset', attrib=clear_dict_from_none(attrib))
+        if not self.source:
+            for child in self.childs:
+                root.append(child.get_element())
+        return root
 
 
 @dataclass
