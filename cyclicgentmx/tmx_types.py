@@ -223,7 +223,13 @@ class Data:
         }
         root = ET.Element('data', attrib=clear_dict_from_none(attrib))
         if self.tiles:
-            root.text = ''.join(map(str, self.tiles))
+            if not self.encoding:
+                for tile in self.tiles:
+                    if tile:
+                        attrib = {'gid': str(tile)}
+                    else:
+                        attrib = {}
+                    root.append(ET.Element('tile', attrib=attrib))
         else:
             for child in self.childs:
                 root.append(child.get_element())
@@ -278,7 +284,7 @@ class Image:
     def get_element(self):
         attrib = {'format': self.format,
                   'source': self.source,
-                  'trans': self.trans.without_sharp_hex_color,
+                  'trans': self.trans.without_sharp_hex_color if self.trans else None,
                   'width': str(self.width),
                   'height': str(self.height)}
         root =  ET.Element('image', attrib=clear_dict_from_none(attrib))
@@ -1145,16 +1151,34 @@ class Layer:
         return cls(layer_id, name, x, y, width, height, opacity, visible,
                      offsetx, offsety, properties, data, childs)
 
+    def get_element(self):
+        attrib = {
+            'id': str(self.id),
+            'name': self.name,
+            'x': str(self.x) if self.x else None,
+            'y': str(self.y) if self.y else None,
+            'width': str(self.width),
+            'height': str(self.height),
+            'opacity': str(self.opacity) if self.opacity else None,
+            'visible': '0' if not self.visible else None,
+            'offsetx': str(self.offsetx) if self.offsetx else None,
+            'offsety': str(self.offsety) if self.offsety else None
+        }
+        root = ET.Element('layer', attrib=clear_dict_from_none(attrib))
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
+
 
 @dataclass
 class ImageLayer:
     id: int
     name: str
-    offsetx: float
-    offsety: float
-    x: int
-    y: int
-    opacity: float
+    offsetx: Optional[float]
+    offsety: Optional[float]
+    x: Optional[int]
+    y: Optional[int]
+    opacity: Optional[float]
     visible: bool
     properties: Properties
     image: Image
@@ -1212,14 +1236,30 @@ class ImageLayer:
                 childs.append(image)
         return cls(imagelayer_id, name, offsetx, offsety, x, y, opacity, visible, properties, image, childs)
 
+    def get_element(self):
+        attrib = {
+            'id': str(self.id),
+            'name': self.name,
+            'x': str(self.x) if self.x else None,
+            'y': str(self.y) if self.y else None,
+            'opacity': str(self.opacity) if self.opacity else None,
+            'visible': '0' if not self.visible else None,
+            'offsetx': str(self.offsetx) if self.offsetx else None,
+            'offsety': str(self.offsety) if self.offsety else None
+        }
+        root = ET.Element('imagelayer', attrib=clear_dict_from_none(attrib))
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
+
 
 @dataclass
 class Group:
     id: int
     name: str
-    offsetx: float
-    offsety: float
-    opacity: float
+    offsetx: Optional[float]
+    offsety: Optional[float]
+    opacity: Optional[float]
     visible: bool
     properties: Properties
     layers: List[Layer]
@@ -1303,6 +1343,20 @@ class Group:
             childs.append(child_object)
         return cls(group_id, name, offsetx, offsety, opacity, visible, properties,
                      layers, objectgroups, imagelayers, groups, childs)
+
+    def get_element(self):
+        attrib = {
+            'id': str(self.id),
+            'name': self.name,
+            'opacity': str(self.opacity) if self.opacity else None,
+            'visible': '0' if not self.visible else None,
+            'offsetx': str(self.offsetx) if self.offsetx else None,
+            'offsety': str(self.offsety) if self.offsety else None
+        }
+        root = ET.Element('group', attrib=clear_dict_from_none(attrib))
+        for child in self.childs:
+            root.append(child.get_element())
+        return root
 
 
 class MapValidationError(Exception):

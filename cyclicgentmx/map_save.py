@@ -27,8 +27,7 @@ class MapSave:
         }
         root = ET.Element('map', attrib=clear_dict_from_none(attrib))
         for child in self.childs:
-            if isinstance(child, Properties) or isinstance(child, TileSet):
-                root.append(child.get_element())
+            root.append(child.get_element())
 
         indent(root)
         tree = ET.ElementTree(root)
