@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+import pathlib
 import xml.etree.ElementTree as ET
 from cyclicgentmx.tmx_types import Properties, TileSet
 from cyclicgentmx.helpers import clear_dict_from_none, indent
@@ -25,9 +27,10 @@ class MapSave:
             'nextobjectid': self.nextobjectid,
             'infinite': '1' if self.infinite else '0'
         }
+        new_file_dir = pathlib.PurePath(map_name).parent
         root = ET.Element('map', attrib=clear_dict_from_none(attrib))
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(self.file_dir, new_file_dir))
 
         indent(root)
         tree = ET.ElementTree(root)

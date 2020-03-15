@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import Any, List, Union, Optional
 from dataclasses import dataclass
 import pathlib
@@ -80,7 +81,7 @@ class Property:
     property_type: str
     value: Any
 
-    def validate(self):
+    def validate(self) -> None:
         if not all(isinstance(field, str) for field in (self.name, self.property_type)):
             raise MapStrValidationError(('name', 'property_type'))
 
@@ -90,11 +91,11 @@ class TileOffset:
     x: int
     y: int
 
-    def validate(self):
+    def validate(self) -> None:
         if not all(isinstance(field, int) for field in (self.x, self.y)):
             raise MapIntValidationError(('x', 'y'))
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         return ET.Element('tileoffset', attrib={'x': str(self.x), 'y': str(self.y)})
 
 
@@ -104,13 +105,13 @@ class Grid:
     width: int
     height: int
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.orientation, str) and self.orientation in ('orthogonal', 'isometric')):
             raise MapValidationError('Field orientation must be in ("orthogonal", "isometric")')
         if not all(isinstance(field, int) and field > 0 for field in (self.width, self.height)):
             raise MapIntValidationError(('width', 'height'), 0)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         return ET.Element('grid', attrib={'orientation': self.orientation,
                                           'width': str(self.width),
                                           'height': str(self.height)})
@@ -124,14 +125,14 @@ class Chunk:
     height: int
     tiles: List[int]
 
-    def validate(self):
+    def validate(self) -> None:
         if not all(isinstance(field, int) and field > 0 for field in (self.x, self.y, self.width, self.height)):
             raise MapIntValidationError(('x', 'y', 'width', 'height'), 0)
         if not (isinstance(self.tiles, list) and all(isinstance(tile, int) for tile in self.tiles)
                 and len(self.tiles) != self.width * self.height):
             raise MapValidationError('Field "tiles" must be list of int type and len must be equal "width" * "height"')
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         root = ET.Element('chunk', attrib={'x': str(self.x), 'y': str(self.y),
                                            'width': str(self.width), 'height': str(self.height)})
         root.text = ''.join(map(str, self.tiles))
@@ -146,7 +147,7 @@ class Data:
     chunks: List[Chunk]
     childs: Union[List[int], List[Chunk]]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (self.encoding is None or isinstance(self.encoding, str) and self.encoding in ('csv', 'base64')):
             raise MapValidationError('Field "encoding" must be in ("csv", "base64")')
         if not (self.encoding != 'base64'
@@ -211,7 +212,7 @@ class Data:
             raise ValueError("Encoding format {} not supported.". format(encoding))
         return tiles
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         encoding: Optional[str]
         compression: Optional[str]
         tiles: List[int]
@@ -232,7 +233,7 @@ class Data:
                     root.append(ET.Element('tile', attrib=attrib))
         else:
             for child in self.childs:
-                root.append(child.get_element())
+                root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -246,7 +247,7 @@ class Image:
     data: Optional[Data]
     childs: List[Data]
 
-    def validate(self):
+    def validate(self) -> None:
         if self.data and not (isinstance(self.format, str) and self.format in ('png', 'gif', 'jpg', 'bmp')):
             raise MapValidationError('Field "format" must be in ("png", "gif", "jpg", "bmp")')
         if not isinstance(self.source, str):
@@ -281,15 +282,16 @@ class Image:
                 childs.append(data)
         return cls(image_format, source, trans, width, height, data, childs)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
+        source = os.path.relpath(os.path.normpath(os.path.join(file_dir, self.source)), start=new_file_dir)
         attrib = {'format': self.format,
-                  'source': self.source,
+                  'source': source,
                   'trans': self.trans.without_sharp_hex_color if self.trans else None,
                   'width': str(self.width),
                   'height': str(self.height)}
         root =  ET.Element('image', attrib=clear_dict_from_none(attrib))
         if self.data:
-            root.append(self.data.get_element())
+            root.append(self.data.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -300,7 +302,7 @@ class Terrain:
     properties: Optional[Properties]
     childs: List[Properties]
 
-    def validate(self):
+    def validate(self) -> None:
         if not all(isinstance(field, str) for field in (self.name, self.tile)):
             raise MapStrValidationError(('name', 'tile'))
         if not (self.properties is None or isinstance(self.properties, Properties)):
@@ -313,10 +315,10 @@ class Terrain:
         for child in self.childs:
             child.validate()
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         root = ET.Element('terrain', attrib={'name': self.name, 'tile': self.tile})
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -338,7 +340,7 @@ class Object:
     properties: Optional[Properties]
     childs: List[Properties]
 
-    def validate(self):
+    def validate(self) -> None:
         if not isinstance(self.id, int):
             raise MapIntValidationError(('id',))
         if not (self.gid is None or isinstance(self.gid, int)):
@@ -405,7 +407,7 @@ class Object:
         return cls(object_id, name, object_type, x, y, width, height, rotation, gid, visible, template, figure_type,
                    points, properties, childs)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         attrib = {
             'id': self.id,
             'name': self.name,
@@ -422,7 +424,7 @@ class Object:
         }
         root = ET.Element('object', attrib=clear_dict_from_none(attrib))
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         if self.figure_type:
             if self.points:
                 points = [','.join(map(str,field)) for field in self.points]
@@ -440,7 +442,7 @@ class Object:
 class Objects:
     childs: List[Object]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.childs, list) and all(isinstance(child, Object) for child in self.childs)):
             raise MapValidationError('Field "childs" must be list of Object')
         for child in self.childs:
@@ -465,7 +467,7 @@ class ObjectGroup:
     objects: Objects
     childs: List[Union[Properties, Object]]
 
-    def validate(self):
+    def validate(self) -> None:
         if not isinstance(self.id, int):
             raise MapIntValidationError(('id'))
         if not (self.name is None or isinstance(self.name, str)):
@@ -524,7 +526,7 @@ class ObjectGroup:
         return cls(objectgroup_id, name, color, x, y, width, height, opacity, visible,
                            offsetx, offsety, draworder, properties, Objects(objects), childs)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         attrib = {
             'id': str(self.id),
             'name': self.name if self.name else None,
@@ -542,7 +544,7 @@ class ObjectGroup:
         }
         root = ET.Element('objectgroup', attrib=clear_dict_from_none(attrib))
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -552,11 +554,11 @@ class Frame:
     tiled: int
     duration: int
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.tiled, int) and isinstance(self.duration, int)):
             raise MapIntValidationError(('tiled', 'duration'))
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         return ET.Element('frame', attrib={'tiled': str(self.tiled), 'duration': str(self.duration)})
 
 
@@ -564,7 +566,7 @@ class Frame:
 class Animation:
     childs: List[Frame]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.childs, list) and all(isinstance(child, Frame) for child in self.childs)):
             raise MapValidationError('Field "childs" must be list of Frame')
         for child in self.childs:
@@ -580,10 +582,10 @@ class Animation:
                 result.append(Frame(tileid, duration))
         return cls(result)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         root = ET.Element('animation')
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -599,7 +601,7 @@ class Tile:
     animation: Optional[Animation]
     childs: List[Union[Properties, Image, ObjectGroup, Animation]]
 
-    def validate(self):
+    def validate(self) -> None:
         if not isinstance(self.id, int):
             raise MapIntValidationError('id')
         if not (self.type is None or isinstance(self.type, str)):
@@ -664,7 +666,7 @@ class Tile:
             childs.append(child_object)
         return cls(tile_id, tile_type, terrain, probability, properties, image, objectgroup, animation, childs)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         attrib = {
             'id': self.id,
             'type': self.type,
@@ -673,7 +675,7 @@ class Tile:
         }
         root = ET.Element('tile', attrib=clear_dict_from_none(attrib))
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -697,7 +699,7 @@ class WangColor:
         if not self.color_type in ('wangedgecolor', 'wangcornercolor'):
             raise MapValidationError('Field "color_type must be in ("wangedgecolor", "wangcornercolor")')
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         attrib = {
             'name': self.name,
             'color': self.color.hex_color,
@@ -737,7 +739,7 @@ class WangTile:
         if not isinstance(self.wangid, WangID):
             raise MapValidationError('Field wangid must be WangID type')
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         return ET.Element('wangtile', attrib={'tileid': str(self.tileid), 'wangid': self.wangid.idstr})
 
 
@@ -750,7 +752,7 @@ class WangSet:
     wangtiles: List[WangTile]
     childs: List[Union[WangColor, WangTile]]
 
-    def validate(self):
+    def validate(self) -> None:
         if not isinstance(self.name, str):
             raise MapStrValidationError('name')
         if not (isinstance(self.tile, int) and self.tile > -2):
@@ -771,10 +773,10 @@ class WangSet:
         for child in self.childs:
             child.validation()
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         root = ET.Element('wangset', attrib={'name': str(self.name), 'tile': str(self.tile)})
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -782,7 +784,7 @@ class WangSet:
 class TerrainTypes:
     childs: List[Terrain]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.childs, list) and all(isinstance(child, Terrain) for child in self.childs)):
             raise MapValidationError('Field "childs" must be list of Terrain')
         for child in self.childs:
@@ -806,10 +808,10 @@ class TerrainTypes:
                 result.append(Terrain(name, tile, properties, childs))
         return cls(result)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         root = ET.Element('terraintypes')
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -817,7 +819,7 @@ class TerrainTypes:
 class Properties:
     childs: List[Property]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.childs, list) and all(isinstance(child, Property) for child in self.childs)):
             raise MapValidationError('Field "childs" must be list of Property')
         for child in self.childs:
@@ -848,7 +850,7 @@ class Properties:
         print(result)
         return cls(result)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         root = ET.Element('properties')
         for child in self.childs:
             prop_type = child.property_type
@@ -867,7 +869,7 @@ class Properties:
 class WangSets:
     childs: List[WangSet]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.childs, list) and all(isinstance(child, WangSet) for child in self.childs)):
             raise MapValidationError('Field "childs" must be list of WangSet')
         for child in self.childs:
@@ -912,10 +914,10 @@ class WangSets:
                 result.append(WangSet(name, tile, wangcornercolors, wangedgecolor, wangtiles, childs))
         return cls(result)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         root = ET.Element('wangsets')
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -941,7 +943,7 @@ class TileSet:
     wangsets: Optional[WangSets]
     childs: List[Union[TileOffset, Grid, Properties, Image, TerrainTypes, Tile, WangSets]]
 
-    def validate(self):
+    def validate(self) -> None:
         if not all(isinstance(field, int) and field > 0
                    for field in (self.firstgid, self.tilewidth, self.tileheight, self.tilecount, self.columns)):
             raise MapIntValidationError(('firstgid', 'tilewidth', 'tileheight', 'tilecount', 'columns'), 0)
@@ -1053,11 +1055,12 @@ class TileSet:
                        version, tiledversion, tileoffset, grid, properties, image, terraintypes,
                        tiles, wangsets, childs)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         if self.source:
+            source = os.path.relpath(os.path.normpath(os.path.join(file_dir, self.source)), start=new_file_dir)
             attrib = {
                 'firstgid': str(self.firstgid),
-                'source': self.source,
+                'source': source,
             }
         else:
             attrib = {
@@ -1076,7 +1079,7 @@ class TileSet:
         root = ET.Element('tileset', attrib=clear_dict_from_none(attrib))
         if not self.source:
             for child in self.childs:
-                root.append(child.get_element())
+                root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -1096,7 +1099,7 @@ class Layer:
     data: Data  # validate Data len(tiles) if not infinite map?
     childs: List[Union[Properties, Data]]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.id, int) and self.id > 0):
             raise MapIntValidationError("id", 0)
         if not isinstance(self.name, str):
@@ -1153,7 +1156,7 @@ class Layer:
         return cls(layer_id, name, x, y, width, height, opacity, visible,
                      offsetx, offsety, properties, data, childs)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         attrib = {
             'id': str(self.id),
             'name': self.name,
@@ -1168,7 +1171,7 @@ class Layer:
         }
         root = ET.Element('layer', attrib=clear_dict_from_none(attrib))
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -1186,7 +1189,7 @@ class ImageLayer:
     image: Image
     childs: List[Union[Properties, Image]]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.id, int) and self.id > 0):
             raise MapIntValidationError("id", 0)
         if not isinstance(self.name, str):
@@ -1238,7 +1241,7 @@ class ImageLayer:
                 childs.append(image)
         return cls(imagelayer_id, name, offsetx, offsety, x, y, opacity, visible, properties, image, childs)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         attrib = {
             'id': str(self.id),
             'name': self.name,
@@ -1251,7 +1254,7 @@ class ImageLayer:
         }
         root = ET.Element('imagelayer', attrib=clear_dict_from_none(attrib))
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
@@ -1270,7 +1273,7 @@ class Group:
     groups: List[Group]
     childs: List[Properties, Layer, ObjectGroup, ImageLayer, Group]
 
-    def validate(self):
+    def validate(self) -> None:
         if not (isinstance(self.id, int) and self.id > 0):
             raise MapIntValidationError("id", 0)
         if not isinstance(self.name, str):
@@ -1346,7 +1349,7 @@ class Group:
         return cls(group_id, name, offsetx, offsety, opacity, visible, properties,
                      layers, objectgroups, imagelayers, groups, childs)
 
-    def get_element(self):
+    def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         attrib = {
             'id': str(self.id),
             'name': self.name,
@@ -1357,7 +1360,7 @@ class Group:
         }
         root = ET.Element('group', attrib=clear_dict_from_none(attrib))
         for child in self.childs:
-            root.append(child.get_element())
+            root.append(child.get_element(file_dir, new_file_dir))
         return root
 
 
