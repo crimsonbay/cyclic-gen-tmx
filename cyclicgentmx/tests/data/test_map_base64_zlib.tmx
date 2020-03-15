@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.2" tiledversion="1.3.1" orientation="orthogonal" renderorder="right-down" compressionlevel="0" width="30" height="30" tilewidth="16" tileheight="16" infinite="0" nextlayerid="9" nextobjectid="17">
+ <editorsettings>
+  <export format="tmx"/>
+ </editorsettings>
+ <properties>
+  <property name="asd" type="int" value="0"/>
+  <property name="ddd" type="file" value="Castle.png"/>
+ </properties>
+ <tileset firstgid="1" source="32x32_iso_tiles_Denzi060312.tsx"/>
+ <layer id="1" name="Tile Layer 1" width="30" height="30">
+  <data encoding="base64" compression="zlib">
+   eAHtkFtuw0AMA+Oj9bv3v0892Q5CMH5s4Tb9iYC1VhRJaX27veP9B17/Bz5fNJI5V85P18xZqe33fqzNPHL39PY7n/Hp9xxrvNSDyU0MfDb01St19sCcs8WzD+co9CNnpE5Ovgeudeq8u1P60NNLXmf58vSRdzQTDnyiefqN7vMXvpzWdv2sfsylBz9DX3fLnnOdkZz2SZ33WX7u4CyzvWU1FdN/L8/ORY8vfL3JYBwDbCbwMfY0cDzMcK4YmRAf1fFXjbpmZ18O/j2TWjw9lrXgZMDNQGfQ2+r3m5KnXqz16e2drK7v1HjQzwxuiFubwTkZWW+9Q0xPPXK/ZTXkEO4lb6BjLhhBhq93etEn4HTf+k6oT3ug76O+uWV1L5N7xD/q5Ru2ZjSm1/LdyB3k0uPIFTersT7LyXcuGvHM4ulpP7Grdz3P8tU5s/reY1b3GzxmE/+xg7PHBo8drP8y+15ndC2e+QvkEkgc
+  </data>
+ </layer>
+ <group id="3" name="Group 1">
+  <properties>
+   <property name="ASD" type="int" value="12"/>
+  </properties>
+ </group>
+ <group id="5" name="Group 2">
+  <properties>
+   <property name="ASD" type="int" value="123"/>
+  </properties>
+  <layer id="7" name="Tile Layer 2" width="30" height="30">
+   <data encoding="base64" compression="zlib">
+   eAHt0IEAAAAAw6D5Ux/khVBhwIABAwYMGDBgwIABA48DAw4QAAE=
+  </data>
+  </layer>
+  <layer id="8" name="Tile Layer 3" width="30" height="30">
+   <data encoding="base64" compression="zlib">
+   eAHt0IEAAAAAw6D5Ux/khVBhwIABAwYMGDBgwIABA48DAw4QAAE=
+  </data>
+  </layer>
+ </group>
+ <imagelayer id="4" name="Image Layer 1" visible="0" opacity="0.8">
+  <image source="Castle.png" width="512" height="512"/>
+ </imagelayer>
+ <objectgroup color="#55557f" id="2" name="Object Layer 1" offsetx="1" offsety="0">
+  <properties>
+   <property name="asd" type="int" value="432"/>
+  </properties>
+  <object id="1" x="83.7122" y="118.393"/>
+  <object id="2" x="139.321" y="74.1451" rotation="100"/>
+  <object id="3" x="227.817" y="103.444" width="4.78356" height="16.1445"/>
+  <object id="4" x="257.116" y="195.528" height="2.39178"/>
+  <object id="5" x="300.766" y="299.57" width="4.18561" height="0.597945"/>
+  <object id="6" x="157.259" y="227.817"/>
+  <object id="7" x="168.022" y="246.353" width="0.597945">
+   <properties>
+    <property name="asd" type="int" value="123"/>
+   </properties>
+  </object>
+  <object id="8" x="157.463" y="108.826" width="33.8794" height="36.9043">
+   <properties>
+    <property name="asd" type="int" value="123"/>
+   </properties>
+   <ellipse/>
+  </object>
+  <object id="9" x="151.457" y="232.96" rotation="100">
+   <properties>
+    <property name="asdfgh" type="bool" value="true"/>
+   </properties>
+   <polygon points="0,0 161.314,35.6554 183.312,-99.257"/>
+  </object>
+  <object id="11" x="305.124" y="187.547" width="68.9687" height="78.0435"/>
+  <object id="12" x="257.33" y="359.363"/>
+  <object id="13" x="213.166" y="240.181">
+   <polygon points="0,0 107.688,62.9188 156.692,-119.183 230.501,-68.3637 227.476,27.8295"/>
+  </object>
+  <object id="15" x="63.7338" y="202.671">
+   <point/>
+  </object>
+  <object id="16" x="0" y="0">
+   <ellipse/>
+  </object>
+ </objectgroup>
+ <objectgroup id="6" name="Object Layer 2" visible="0"/>
+</map>

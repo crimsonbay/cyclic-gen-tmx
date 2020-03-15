@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.2" tiledversion="1.3.1" orientation="hexagonal" renderorder="left-down" compressionlevel="0" width="30" height="30" tilewidth="32" tileheight="32" infinite="1" hexsidelength="0" staggeraxis="y" staggerindex="odd" nextlayerid="2" nextobjectid="1">
+ <tileset firstgid="1" source="32x32_iso_tiles_Denzi060312.tsx"/>
+ <layer id="1" name="Tile Layer 1" width="30" height="30">
+  <data encoding="base64" compression="zlib">
+   <chunk x="-16" y="-192" width="16" height="16">
+   eAFjYBgFoyEwGgL0DoFooIUgTAmgVD/IbgB7cAES
+  </chunk>
+   <chunk x="16" y="-112" width="16" height="16">
+   eAFjYBgFoyEwGgKDLQSi6eQgACj4AFw=
+  </chunk>
+   <chunk x="-16" y="-64" width="16" height="16">
+   eAFjYBgFQykEooGORcbEuh2mh1j16OpA+kfB8AsBAGjvAn4=
+  </chunk>
+   <chunk x="0" y="-64" width="16" height="16">
+   eAFjYMAPoqHSIBrGxq8DIgtTj0wT0oesFptd2MRAZsL0EWM+uhpi9cLswaYfXQwbH5fbsanFJkaJfkr0gtxCiX5K9A5Vu0F+psTf9NQLAMVDC2E=
+  </chunk>
+   <chunk x="0" y="-48" width="16" height="16">
+   eAFjYEAF0ajcUd5oCIyGwDAOAQBqXwBc
+  </chunk>
+   <chunk x="-16" y="-16" width="16" height="16">
+   eAFjYBgFoyEwGgL0DoFooIUgTAmghn4AfNwBbQ==
+  </chunk>
+   <chunk x="0" y="-16" width="16" height="16">
+   eAFjYBgFgy0Eosl0EEgfuXpBVlKinxK9A2k3NdwNcj+5gJL4ItdOZH0AGUwFVg==
+  </chunk>
+   <chunk x="-16" y="0" width="16" height="16">
+   eAFjYCAfRJOvlYESvSBrKdFPid5Ru8mPdORwB7GR+cSYiqyeVP0w9TCaGPvQ1VCqF928wcAHAFC6B9M=
+  </chunk>
+   <chunk x="0" y="0" width="16" height="16">
+   eAFjYBgF1AqBaAoNAuknxwxy9YGcC9NLjr0w71KiF+YGmFmk0gNpN6luHYzqAVwgBEU=
+  </chunk>
+   <chunk x="0" y="32" width="16" height="16">
+   eAFjYBgFoyEwGgKUhkA0hQaA9JNrBiV6AcKIAcg=
+  </chunk>
+   <chunk x="-16" y="48" width="16" height="16">
+   eAFjYBgFAxUC0RRaPJT1D2W3g6KNEvdTopfCJIOhHQDmEAM0
+  </chunk>
+   <chunk x="0" y="48" width="16" height="16">
+   eAFjYGBgiIZiIEUWGEj9ILtBAEZDeMSTMH0wmnidqCoHUv9A2g0KhVH7UdMCqTxKwo8SvSB3AgAwAgd4
+  </chunk>
+   <chunk x="-16" y="80" width="16" height="16">
+   eAFjYBgFgz0Eoil0IKX6QdZTYgYlemFep9QMkP7BYAbMP4OFBgCqWAM0
+  </chunk>
+  </data>
+ </layer>
+</map>
