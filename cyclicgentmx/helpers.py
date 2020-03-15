@@ -43,8 +43,12 @@ def get_size(obj, seen=None):
     return size
 
 
-def four_bytes(bytes: List[int]) -> int:
-    return bytes[0] + bytes[1] * P28 + bytes[2] * P216 + bytes[3] * P224
+def four_bytes(source_bytes: List[int]) -> int:
+    return source_bytes[0] + source_bytes[1] * P28 + source_bytes[2] * P216 + source_bytes[3] * P224
+
+
+def get_four_bytes(tile: int) -> str:
+    return tile % P28, tile // P28, tile // P216, tile // P224
 
 
 def count_types(elements: list):

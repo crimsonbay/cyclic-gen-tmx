@@ -2,12 +2,14 @@ from __future__ import annotations
 import os
 from typing import Any, List, Union, Optional
 from dataclasses import dataclass
+from itertools import chain
 import pathlib
 import base64
 import gzip
 import zlib
 import xml.etree.ElementTree as ET
-from cyclicgentmx.helpers import count_types, int_or_none, float_or_none, four_bytes, clear_dict_from_none
+from cyclicgentmx.helpers import count_types, int_or_none, float_or_none, four_bytes, clear_dict_from_none, \
+    get_four_bytes
 
 
 class Color:
@@ -231,6 +233,15 @@ class Data:
                     else:
                         attrib = {}
                     root.append(ET.Element('tile', attrib=attrib))
+            elif self.encoding == 'csv':
+                root.text = ','.join(map(str, self.tiles))
+            elif self.encoding == 'base64':
+                data = bytes(chain.from_iterable(map(get_four_bytes, self.tiles)))
+                if self.compression == 'zlib':
+                    data = zlib.compress(data)
+                elif self.compression == 'gzip':
+                    data = gzip.compress(data)
+                root.text = base64.b64encode(data).decode("latin1")
         else:
             for child in self.childs:
                 root.append(child.get_element(file_dir, new_file_dir))
@@ -289,7 +300,7 @@ class Image:
                   'trans': self.trans.without_sharp_hex_color if self.trans else None,
                   'width': str(self.width),
                   'height': str(self.height)}
-        root =  ET.Element('image', attrib=clear_dict_from_none(attrib))
+        root = ET.Element('image', attrib=clear_dict_from_none(attrib))
         if self.data:
             root.append(self.data.get_element(file_dir, new_file_dir))
         return root
@@ -847,7 +858,6 @@ class Properties:
                                    value
                                    )
                           )
-        print(result)
         return cls(result)
 
     def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
