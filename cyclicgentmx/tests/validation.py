@@ -3,7 +3,7 @@ from cyclicgentmx.helpers import get_size
 import pathlib
 
 
-filenames = ('test_map', 'test_map_csv', 'test_map_base64', 'test_map_base64_gzip', 'test_map_base64_zlib')
+filenames = ('test_map', 'test_map_csv', 'test_map_base64', 'test_map_base64_gzip', 'test_map_base64_zlib', 'infinite')
 for filename in filenames:
     test_map = pathlib.Path(__file__).parent.absolute().joinpath('data/{}.tmx'.format(filename)).as_posix()
     m = MapBase.from_file(test_map)

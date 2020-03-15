@@ -47,8 +47,8 @@ class MapValid:
             if not_defined_mandatory_fields:
                 raise MapValidationError('Some hexagonal map mandatory fields is None: {}'.format(missing_fields))
 
-            if not (isinstance(self.hexsidelength, int) and self.hexsidelength > 0):
-                raise MapIntValidationError('hexsidelength', 0)
+            if not (isinstance(self.hexsidelength, int) and self.hexsidelength > -1):
+                raise MapIntValidationError('hexsidelength', -1)
 
             if self.staggeraxis not in ['x', 'y']:
                 raise MapValidationError('Field "compressionlevel" must be in ("x", "y")')

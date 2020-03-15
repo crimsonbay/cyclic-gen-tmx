@@ -128,10 +128,12 @@ class Chunk:
     tiles: List[int]
 
     def validate(self) -> None:
-        if not all(isinstance(field, int) and field > 0 for field in (self.x, self.y, self.width, self.height)):
-            raise MapIntValidationError(('x', 'y', 'width', 'height'), 0)
+        if not all(isinstance(field, int) for field in (self.x, self.y)):
+            raise MapIntValidationError(('x', 'y'),)
+        if not all(isinstance(field, int) and field > 0 for field in (self.width, self.height)):
+            raise MapIntValidationError(('width', 'height'), 0)
         if not (isinstance(self.tiles, list) and all(isinstance(tile, int) for tile in self.tiles)
-                and len(self.tiles) != self.width * self.height):
+                and len(self.tiles) == self.width * self.height):
             raise MapValidationError('Field "tiles" must be list of int type and len must be equal "width" * "height"')
 
     def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
@@ -167,8 +169,8 @@ class Data:
         if not (self.tiles == self.childs and not self.chunks or self.chunks == self.childs and not self.tiles):
             raise MapValidationError('Field "childs" must be equal only one "tiles" or "chunks", '
                                      'and other "tiles" or "chunks" must be None')
-        if self.chunks:
-            self.chunks.validate()
+        for chunk in self.chunks:
+            chunk.validate()
 
     @classmethod
     def from_element(cls, data: ET.Element) -> Data:
@@ -214,6 +216,17 @@ class Data:
             raise ValueError("Encoding format {} not supported.". format(encoding))
         return tiles
 
+    def _fill_text_data(self, tiles) -> str:
+        if self.encoding == 'csv':
+            return ','.join(map(str, tiles))
+        elif self.encoding == 'base64':
+            data = bytes(chain.from_iterable(map(get_four_bytes, tiles)))
+            if self.compression == 'zlib':
+                data = zlib.compress(data)
+            elif self.compression == 'gzip':
+                data = gzip.compress(data)
+            return base64.b64encode(data).decode("latin1")
+
     def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
         encoding: Optional[str]
         compression: Optional[str]
@@ -233,18 +246,14 @@ class Data:
                     else:
                         attrib = {}
                     root.append(ET.Element('tile', attrib=attrib))
-            elif self.encoding == 'csv':
-                root.text = ','.join(map(str, self.tiles))
-            elif self.encoding == 'base64':
-                data = bytes(chain.from_iterable(map(get_four_bytes, self.tiles)))
-                if self.compression == 'zlib':
-                    data = zlib.compress(data)
-                elif self.compression == 'gzip':
-                    data = gzip.compress(data)
-                root.text = base64.b64encode(data).decode("latin1")
+            else:
+                root.text = self._fill_text_data(self.tiles)
         else:
             for child in self.childs:
-                root.append(child.get_element(file_dir, new_file_dir))
+                child_root = ET.Element('chunk', attrib={'x': str(child.x), 'y': str(child.y),
+                                                         'width': str(child.width), 'height': str(child.height)})
+                child_root.text = self._fill_text_data(child.tiles)
+                root.append(child_root)
         return root
 
 
