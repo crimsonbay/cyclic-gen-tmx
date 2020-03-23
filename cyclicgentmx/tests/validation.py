@@ -12,9 +12,10 @@ for filename in filenames:
 
 print('Validation test OK')
 
-for filename in filenames:
+for filename in filenames[:-1]:
     test_map = pathlib.Path(__file__).parent.absolute().joinpath('data/{}.tmx'.format(filename)).as_posix()
     m = MapBase.from_file(test_map)
     m.save('xxx.tmx')
+    m.create_base_map_image()  # temporarily here
 
 print('Save test OK')

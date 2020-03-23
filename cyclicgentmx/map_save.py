@@ -1,8 +1,6 @@
 from __future__ import annotations
-import os
 import pathlib
 import xml.etree.ElementTree as ET
-from cyclicgentmx.tmx_types import Properties, TileSet
 from cyclicgentmx.helpers import clear_dict_from_none, indent
 
 
