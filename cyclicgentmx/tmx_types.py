@@ -571,15 +571,15 @@ class ObjectGroup:
 
 @dataclass
 class Frame:
-    tiled: int
+    tileid: int
     duration: int
 
     def validate(self) -> None:
-        if not (isinstance(self.tiled, int) and isinstance(self.duration, int)):
-            raise MapIntValidationError(('tiled', 'duration'))
+        if not (isinstance(self.tileid, int) and isinstance(self.duration, int)):
+            raise MapIntValidationError(('tileid', 'duration'))
 
     def get_element(self, file_dir: str, new_file_dir: str) -> ET.Element:
-        return ET.Element('frame', attrib={'tiled': str(self.tiled), 'duration': str(self.duration)})
+        return ET.Element('frame', attrib={'tileid': str(self.tileid), 'duration': str(self.duration)})
 
 
 @dataclass
@@ -598,7 +598,7 @@ class Animation:
         for frame in animation:
             if frame.tag == 'frame':
                 tileid = int(frame.attrib.get('tileid'))
-                duration = int(frame.attrib.get('tileid'))
+                duration = int(frame.attrib.get('duration'))
                 result.append(Frame(tileid, duration))
         return cls(result)
 
@@ -1383,12 +1383,16 @@ class Group:
         return root
 
 
-class MapValidationError(Exception):
+class MapError(Exception):
     def __init__(self, message: str) -> None:
         self.message = message
 
     def __str__(self) -> str:
         return self.message
+
+
+class MapValidationError(MapError):
+    pass
 
 
 class MapIntValidationError(MapValidationError):
