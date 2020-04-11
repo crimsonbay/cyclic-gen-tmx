@@ -1,5 +1,6 @@
 from typing import List
 import sys
+import math
 from collections import defaultdict
 
 
@@ -78,3 +79,17 @@ def indent(elem, level=0):
     else:
         if level and (not elem.tail or not elem.tail.strip()):
             elem.tail = i
+
+
+def lcm(a: List[int]) -> int:
+    _lcm = a[0]
+    for i in a[1:]:
+        _lcm = _lcm * i // math.gcd(_lcm, i)
+    return _lcm
+
+
+def gcd(a: List[int]) -> int:
+    _gcd = a[0]
+    for i in a[1:]:
+        _gcd = math.gcd(_gcd, i)
+    return _gcd

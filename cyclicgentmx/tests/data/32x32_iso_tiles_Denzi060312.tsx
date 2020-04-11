@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <tileset version="1.2" tiledversion="1.3.1" name="32x32_iso_tiles_Denzi060312" tilewidth="16" tileheight="16" spacing="2" margin="1" tilecount="196" columns="14">
- <tileoffset x="1" y="2"/>
- <grid orientation="orthogonal" width="16" height="17"/>
- <image source="32x32_iso_tiles_Denzi060312.PNG" trans="ff00ff" width="256" height="256"/>
+ <image source="32x32_iso_tiles_Denzi060312.PNG" width="256" height="256"/>
  <terraintypes>
   <terrain name="New Terrain" tile="91"/>
   <terrain name="New Terrain" tile="148">
@@ -14,12 +12,10 @@
  </terraintypes>
  <tile id="0">
   <animation>
-   <frame tileid="0" duration="100"/>
-   <frame tileid="1" duration="100"/>
-   <frame tileid="2" duration="100"/>
-   <frame tileid="3" duration="100"/>
-   <frame tileid="4" duration="100"/>
-   <frame tileid="5" duration="100"/>
+   <frame tileid="0" duration="500"/>
+   <frame tileid="1" duration="500"/>
+   <frame tileid="2" duration="500"/>
+   <frame tileid="3" duration="500"/>
   </animation>
  </tile>
  <tile id="14" terrain=",,,0">
@@ -87,6 +83,15 @@
    <object id="3" name="123" type="123" x="-78.7185" y="4.75973"/>
   </objectgroup>
  </tile>
+ <tile id="69">
+  <animation>
+   <frame tileid="69" duration="200"/>
+   <frame tileid="68" duration="200"/>
+   <frame tileid="69" duration="200"/>
+   <frame tileid="68" duration="200"/>
+   <frame tileid="67" duration="200"/>
+  </animation>
+ </tile>
  <tile id="75" terrain=",0,,0"/>
  <tile id="76" terrain="0,0,0,0"/>
  <tile id="77" terrain="0,,0,"/>
@@ -105,7 +110,7 @@
  </tile>
  <tile id="80">
   <objectgroup draworder="index" id="2">
-   <object id="1" template="../../tile_templ.tx" x="0.8125" y="2"/>
+   <object id="1" template="tile_templ.tx" x="0.8125" y="2"/>
   </objectgroup>
  </tile>
  <tile id="89" terrain=",0,,"/>
@@ -137,10 +142,8 @@
  </tile>
  <tile id="108">
   <animation>
-   <frame tileid="4" duration="100"/>
-   <frame tileid="16" duration="100"/>
-   <frame tileid="20" duration="100"/>
-   <frame tileid="36" duration="100"/>
+   <frame tileid="4" duration="500"/>
+   <frame tileid="36" duration="500"/>
   </animation>
  </tile>
  <tile id="118" terrain=",,,1"/>
@@ -149,13 +152,21 @@
  <tile id="132" terrain=",1,,1"/>
  <tile id="133" terrain="1,1,1,1"/>
  <tile id="134" terrain="1,,1,"/>
- <tile id="146" terrain=",1,,">
-  <objectgroup draworder="index" id="2">
-   <object id="1" x="-97" y="-90" width="134" height="196"/>
-  </objectgroup>
- </tile>
+ <tile id="146" terrain=",1,,"/>
  <tile id="147" terrain="1,1,,"/>
  <tile id="148" terrain="1,,,"/>
+ <tile id="165">
+  <animation>
+   <frame tileid="95" duration="300"/>
+   <frame tileid="67" duration="300"/>
+  </animation>
+ </tile>
+ <tile id="194">
+  <animation>
+   <frame tileid="194" duration="200"/>
+   <frame tileid="95" duration="200"/>
+  </animation>
+ </tile>
  <wangsets>
   <wangset name="New Wang Set" tile="-1">
    <wangedgecolor name="" color="#ff0000" tile="-1" probability="1"/>
@@ -193,6 +204,5 @@
    <wangtile tileid="193" wangid="0x30"/>
    <wangtile tileid="195" wangid="0x40304042"/>
   </wangset>
-  <wangset name="New Wang Set2" tile="107"/>
  </wangsets>
 </tileset>
