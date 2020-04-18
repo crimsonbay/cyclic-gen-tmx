@@ -1,14 +1,14 @@
 from setuptools import setup, find_packages
 setup(
     name="Cyclic Generated TMX",
+    packages=find_packages(),
     license='MIT',
     description='Read, change, write, generate, create animated images TMX maps.',
     long_description='Read, change, write, generate, create animated images TMX maps.',
     author='yobagram',
     url='https://github.com/yobagram/cyclic-gen-tmx',
-    download_url='https://github.com/yobagram/cyclic-gen-tmx/archive/v_011.tar.gz',
-    version="0.1.1",
-    packages=find_packages(),
+    download_url='https://github.com/yobagram/cyclic-gen-tmx/archive/v_012.tar.gz',
+    version="0.1.2",
     include_package_data=True,
     install_requires=["Pillow>=7.0.0"],
     keywords=['tmx', 'map', 'generation', 'save', 'image'],
@@ -17,7 +17,7 @@ setup(
         'Intended Audience :: Developers',
         'Topic :: Software Development :: Build Tools',
         'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
+        "Programming Language :: Python :: 3",
     ],
+    python_requires='>=3.7',
 )
