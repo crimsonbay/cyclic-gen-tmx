@@ -50,6 +50,10 @@ class MapImage:
                         durations.append(duration_before)
                         tile_frame = {'duration': duration_before, 'substitutions': tile_animation_substitutions}
                         tiles_frames.append(tile_frame)
+        if not durations:
+            self._animation_substitutions = animation_substitutions
+            self._all_animated_tile_gids = all_animated_tile_gids
+            return
         lcm_time = lcm(durations)
         for tile_frame in tiles_frames:
             frame_duration = tile_frame['duration']
@@ -76,14 +80,28 @@ class MapImage:
             result_image = Image.new('RGBA', (self.width*tilewidth, self.height*tileheight))
         else:
             result_image = previous_image.copy()
-        self._used_animated_tile_ids = defaultdict(set)
+        if not substitution:
+            substitution = dict()
         substitute = bool(substitution)
         was_changed = False
         for layer in self.layers:
-            tile_id = 0
-            layer_image = Image.new('RGBA', (self.width*tilewidth, self.height*tileheight))
-            for j in range(layer.height):
-                for i in range(layer.width):
+            height_range = range(layer.height)
+            width_range = range(layer.width)
+            if self.orientation == 'orthogonal':
+                if self.renderorder == 'right-up':
+                    height_range = reversed(height_range)
+                elif self.renderorder == 'left-down':
+                    width_range = reversed(width_range)
+                elif self.renderorder == 'left-up':
+                    width_range = reversed(width_range)
+                    height_range = reversed(height_range)
+            layer_image = Image.new('RGBA', (layer.width*tilewidth, layer.height*tileheight))
+            width_range = list(width_range)
+            height_range = list(height_range)
+            for j in height_range:
+                j_compont = j * layer.height
+                for i in width_range:
+                    tile_id = j_compont + i
                     gid = layer.data.tiles[tile_id]
                     old_gid = gid
                     if substitute and only_update:
@@ -96,7 +114,6 @@ class MapImage:
                         image = self._lazy_tileset_images[gid]
                         delta_height = image.size[0] - tileheight
                         layer_image.paste(image, (i*tilewidth, j*tileheight - delta_height))
-                    tile_id += 1
             result_image = Image.alpha_composite(result_image, layer_image)
         return result_image, was_changed
 
@@ -125,4 +142,4 @@ class MapImage:
         result_gif = Image.new('RGBA', (self.width*self.tilewidth, self.height*self.tileheight))
         result_gif.paste(frames[0])
         result_gif.save(name, 'GIF', save_all=True, append_images=frames[1:],
-                        duration=duration, loop=0, optimize=True)
+                        duration=duration, loop=0, transparency=255, disposal=2)
