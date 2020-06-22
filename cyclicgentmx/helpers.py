@@ -12,15 +12,11 @@ P224 = P28**3
 def int_or_none(value):
     if value is not None:
         return int(value)
-    else:
-        return None
 
 
 def float_or_none(value):
     if value is not None:
         return float(value)
-    else:
-        return None
 
 
 def get_size(obj, seen=None):

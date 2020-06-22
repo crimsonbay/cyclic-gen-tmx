@@ -34,7 +34,7 @@ class MapValid:
             raise MapIntValidationError('compressionlevel', -2, 10)
 
         if self.renderorder not in ('right-down', 'right-up', 'left-down', 'left-up'):
-            raise MapValidationError('Field "compressionlevel" must be in '
+            raise MapValidationError('Field "renderorder" must be in '
                                      '("right-down", "right-up", "left-down", "left-up")')
 
         missing_fields = self.HEXAGONAL_MANDATORY_FIELDS.difference(all_fields)
@@ -42,8 +42,6 @@ class MapValid:
             raise MapValidationError('Missing hexagonal map mandatory fields: {}'.format(missing_fields))
 
         if self.orientation == 'hexagonal':
-            not_defined_mandatory_fields = [field for field in self.HEXAGONAL_MANDATORY_FIELDS if
-                                            self.__dict__[field] is None]
             if not_defined_mandatory_fields:
                 raise MapValidationError('Some hexagonal map mandatory fields is None: {}'.format(missing_fields))
 
@@ -55,12 +53,22 @@ class MapValid:
 
             if self.staggerindex not in ['odd', 'even']:
                 raise MapValidationError('Field "compressionlevel" must be in ("odd", "even")')
+        elif self.orientation == 'staggered':
+            if self.staggeraxis not in ['x', 'y']:
+                raise MapValidationError('Field "compressionlevel" must be in ("x", "y")')
+
+            if self.staggerindex not in ['odd', 'even']:
+                raise MapValidationError('Field "compressionlevel" must be in ("odd", "even")')
+
+            if 'hexsidelength' in self.__dict__ and self.__dict__['hexsidelength'] is not None:
+                raise MapValidationError('Some fields must be None for this map orientation: [\'hexsidelength\']')
         else:
             defined_mandatory_fields = [field for field in self.HEXAGONAL_MANDATORY_FIELDS if
                                             self.__dict__[field] is not None]
             if defined_mandatory_fields:
-                raise MapValidationError('Some not hexagonal map mandatory fields '
-                                         'is not None: {}'.format(missing_fields))
+                raise MapValidationError(
+                    'Some fields must be None for this map orientation: {}'
+                        .format(defined_mandatory_fields))
 
         if not isinstance(self.infinite, bool):
             raise MapValidationError('Field "infinite" must be bool')
