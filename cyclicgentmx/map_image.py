@@ -72,6 +72,20 @@ class MapImage:
 
     def _create_map_image_frame(self, substitution: Optional[dict] = None, previous_image: Optional[Image] = None,
                                 only_update: bool = False) -> Image:
+
+        if self.orientation == 'orthogonal':
+            return self._create_orthogonal_map_image_frame(substitution, previous_image, only_update)
+
+        elif self.orientation == 'isometric':
+            return self._create_isometric_map_image_frame(substitution, previous_image, only_update)
+
+        elif self.orientation in ('staggered', 'hexagonal'):
+            return self._create_staggered_map_image_frame(substitution, previous_image, only_update)
+
+    def _create_orthogonal_map_image_frame(self, substitution: Optional[dict] = None,
+                                           previous_image: Optional[Image] = None,
+                                           only_update: bool = False
+                                           ) -> Image:
         if self.infinite:
             raise MapError('Can not create image of infinite map.')
         tilewidth = self.tilewidth
@@ -87,14 +101,13 @@ class MapImage:
         for layer in self.layers:
             height_range = range(layer.height)
             width_range = range(layer.width)
-            if self.orientation == 'orthogonal':
-                if self.renderorder == 'right-up':
-                    height_range = reversed(height_range)
-                elif self.renderorder == 'left-down':
-                    width_range = reversed(width_range)
-                elif self.renderorder == 'left-up':
-                    width_range = reversed(width_range)
-                    height_range = reversed(height_range)
+            if self.renderorder == 'right-up':
+                height_range = reversed(height_range)
+            elif self.renderorder == 'left-down':
+                width_range = reversed(width_range)
+            elif self.renderorder == 'left-up':
+                width_range = reversed(width_range)
+                height_range = reversed(height_range)
             layer_image = Image.new('RGBA', (layer.width*tilewidth, layer.height*tileheight))
             width_range = list(width_range)
             height_range = list(height_range)
@@ -113,7 +126,110 @@ class MapImage:
                     if gid:
                         image = self._lazy_tileset_images[gid]
                         delta_height = image.size[0] - tileheight
-                        layer_image.paste(image, (i*tilewidth, j*tileheight - delta_height))
+                        layer_image.paste(image, (i*tilewidth, j*tileheight - delta_height), image.convert('RGBA'))
+            result_image = Image.alpha_composite(result_image, layer_image)
+        return result_image, was_changed
+
+    def _create_isometric_map_image_frame(self, substitution: Optional[dict] = None,
+                                          previous_image: Optional[Image] = None,
+                                          only_update: bool = False
+                                          ) -> Image:
+        if self.infinite:
+            raise MapError('Can not create image of infinite map.')
+        tilewidth = self.tilewidth
+        tileheight = self.tileheight
+        x_size = (self.width + self.height) * tilewidth // 2
+        y_size = (self.width + self.height) * tileheight // 2
+        if not previous_image:
+            result_image = Image.new('RGBA', (x_size, y_size))
+        else:
+            result_image = previous_image.copy()
+        if not substitution:
+            substitution = dict()
+        substitute = bool(substitution)
+        was_changed = False
+        for layer in self.layers:
+            tile_id = 0
+            layer_image = Image.new('RGBA', (x_size, y_size))
+            for j in range(layer.height):
+                for i in range(layer.width):
+                    gid = layer.data.tiles[tile_id]
+                    old_gid = gid
+                    if substitute and only_update:
+                        gid = substitution.get(gid)
+                    else:
+                        gid = substitution.get(gid, gid)
+                    if old_gid != gid:
+                        was_changed = True
+                    if gid:
+                        image = self._lazy_tileset_images[gid]
+                        layer_image.paste(image,
+                                          ((i - j + layer.height - 1) * tilewidth // 2,
+                                           (j + i - 2) * tileheight // 2), image.convert('RGBA')
+                                          )
+                    tile_id += 1
+            result_image = Image.alpha_composite(result_image, layer_image)
+        return result_image, was_changed
+
+    def _create_staggered_map_image_frame(self, substitution: Optional[dict] = None,
+                                          previous_image: Optional[Image] = None,
+                                          only_update: bool = False
+                                          ) -> Image:
+        if self.infinite:
+            raise MapError('Can not create image of infinite map.')
+        tilewidth = self.tilewidth
+        tileheight = self.tileheight
+        hexsidelength = self.hexsidelength if self.hexsidelength else 0
+        if self.staggeraxis == 'y':
+            x_size = self.width * tilewidth + tilewidth // 2
+            y_size = (self.height + 1) * (tileheight + hexsidelength) // 2 - hexsidelength
+        else:
+            x_size = ((self.width + 1) * (tilewidth + hexsidelength)) // 2 - hexsidelength
+            y_size = self.height * tileheight + tileheight // 2
+        if not previous_image:
+            result_image = Image.new('RGBA', (x_size, y_size))
+        else:
+            result_image = previous_image.copy()
+        if not substitution:
+            substitution = dict()
+        substitute = bool(substitution)
+        was_changed = False
+        if self.staggerindex == 'even':
+            even = 1
+            i_range = list(range(1, self.width, 2))
+            i_range.extend(list(range(0, self.width, 2)))
+        else:
+            even = 0
+            i_range = list(range(0, self.width, 2))
+            i_range.extend(list(range(1, self.width, 2)))
+        for layer in self.layers:
+            layer_image = Image.new('RGBA', (x_size, y_size))
+            for j in range(layer.height):
+                j_width = j * self.width
+                for i in i_range:
+                    tile_id = j_width + i
+                    gid = layer.data.tiles[tile_id]
+                    old_gid = gid
+                    if substitute and only_update:
+                        gid = substitution.get(gid)
+                    else:
+                        gid = substitution.get(gid, gid)
+                    if old_gid != gid:
+                        was_changed = True
+                    if gid:
+                        image = self._lazy_tileset_images[gid]
+                        if self.staggeraxis == 'y':
+                            layer_image.paste(image,
+                                              (i * tilewidth + ((j + even) % 2) * tilewidth // 2,
+                                               (j - 2) * (tileheight + hexsidelength) // 2 + hexsidelength),
+                                              image.convert('RGBA')
+                                              )
+                        else:
+                            layer_image.paste(image,
+                                              (i * (tilewidth + hexsidelength) // 2,
+                                               (j - 1) * tileheight + ((i + even) % 2) * tileheight // 2),
+                                              image.convert('RGBA')
+                                              )
             result_image = Image.alpha_composite(result_image, layer_image)
         return result_image, was_changed
 
@@ -128,7 +244,9 @@ class MapImage:
         prev_time = None
         only_update = False
         for substitution_time in sorted(self._animation_substitutions.keys()):
-            frame, was_changed = self._create_map_image_frame(self._animation_substitutions[substitution_time], prev_frame, only_update)
+            frame, was_changed = self._create_map_image_frame(self._animation_substitutions[substitution_time],
+                                                              prev_frame,
+                                                              only_update)
             only_update = True
             if not prev_frame or was_changed:
                 frames.append(frame)
