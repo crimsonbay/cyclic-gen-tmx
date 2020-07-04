@@ -370,10 +370,10 @@ class Object:
         if not all(field is None or isinstance(field, float) and field > 0
                    for field in (self.width, self.height, self.rotation)):
             raise MapFloatValidationError(('width', 'height', 'rotation'), 0, none=True)
-        if not all(self.field is None or isinstance(field, str)
+        if not all(field is None or isinstance(field, str)
                    for field in (self.name, self.object_type, self.template, self.figure_type)):
             raise MapStrValidationError(('name', 'object_type', 'template', 'figure_type'), none=True)
-        if self.figure_type is None or self.figure_type not in ('ellipse', 'point', 'polygon', 'polyline', 'text'):
+        if not (self.figure_type is None or self.figure_type in ('ellipse', 'point', 'polygon', 'polyline', 'text')):
             raise MapValidationError('Field "figure_type" must be None or in ("ellipse", "point", "polygon", '
                                      '"polyline", "text")')
         if not (self.properties is None or isinstance(self.properties, Properties)):
@@ -399,7 +399,7 @@ class Object:
 
     @classmethod
     def from_element(cls, object: ET.Element) -> Object:
-        object_id = object.attrib.get('id')
+        object_id = int(object.attrib.get('id'))
         name = object.attrib.get('name', None)
         object_type = object.attrib.get('type', None)
         x = float(object.attrib.get('x'))
