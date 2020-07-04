@@ -121,7 +121,7 @@ class MapImage:
                         gid = substitution.get(gid)
                     else:
                         gid = substitution.get(gid, gid)
-                    if old_gid != gid:
+                    if gid is not None and old_gid != gid:
                         was_changed = True
                     if gid:
                         image = self._lazy_tileset_images[gid]
@@ -159,7 +159,7 @@ class MapImage:
                         gid = substitution.get(gid)
                     else:
                         gid = substitution.get(gid, gid)
-                    if old_gid != gid:
+                    if gid is not None and old_gid != gid:
                         was_changed = True
                     if gid:
                         image = self._lazy_tileset_images[gid]
@@ -214,7 +214,7 @@ class MapImage:
                         gid = substitution.get(gid)
                     else:
                         gid = substitution.get(gid, gid)
-                    if old_gid != gid:
+                    if gid is not None and old_gid != gid:
                         was_changed = True
                     if gid:
                         image = self._lazy_tileset_images[gid]
