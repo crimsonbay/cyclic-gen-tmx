@@ -1,6 +1,13 @@
 from __future__ import annotations
 from typing import List, Optional
 import os
+from io import BytesIO
+try:
+    import numpy
+    NUMPY_FOUND = True
+except ImportError:
+    NUMPY_FOUND = False
+
 from PIL import Image
 from cyclicgentmx.tmx_types import MapError
 from collections import defaultdict
@@ -257,7 +264,35 @@ class MapImage:
                     prev_time = 0
                 prev_frame = frame
         duration.append(self._animation_time - prev_time)
-        result_gif = Image.new('RGBA', (self.width*self.tilewidth, self.height*self.tileheight))
-        result_gif.paste(frames[0])
-        result_gif.save(name, 'GIF', save_all=True, append_images=frames[1:],
-                        duration=duration, loop=0, transparency=255, disposal=2)
+
+        buffer = list()
+        for frame in frames:
+            buf = BytesIO()
+            buffer.append(buf)
+            paletted_frame = frame.convert('P', colors=256)
+            paletted_frame.save(buf, 'GIF', transparency=255)
+        images = list()
+        for buf in buffer:
+            im = Image.open(buf).convert('P')
+            shiftme = 256 - im.info['transparency']
+            palette = im.getpalette()
+            new_palette = (palette[-3 * shiftme:] + palette[:-3 * shiftme])
+            if NUMPY_FOUND:
+                im2 = Image.fromarray((numpy.array(im) + shiftme) % 256).convert('P')
+            else:
+                new_data = list((pix + shiftme) % 256 for pix in im.getdata())
+                im2 = Image.new('P', im.size)
+                im2.putdata(new_data)
+            im2.putpalette(new_palette)
+            images.append(im2)
+        image = images[0]
+        image.save(name, 'GIF', save_all=True, append_images=images[1:], loop=0, duration=duration, transparency=0)
+
+        # if line_number is None:
+        #     image_height = self.height * self.tileheight
+        # else:
+        #     image_height = self.max_tileset_grid_high
+        # result_gif = Image.new('RGBA', (self.width*self.tilewidth, image_height))
+        # result_gif.paste(frames[0])
+        # result_gif.save(name, 'GIF', save_all=True, append_images=frames[1:],
+        #                 duration=duration, loop=0, transparency=255, disposal=2)
