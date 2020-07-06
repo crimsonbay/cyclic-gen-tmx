@@ -17,6 +17,8 @@ from cyclicgentmx.helpers import lcm
 
 class MapImage:
     def _generate_lazy_tileset_images(self) -> List[Image]:
+        if hasattr(self, '_lazy_tileset_images'):
+            return
         result = [None, ]
         for tileset in self.tilesets:
             source = os.path.normpath(os.path.join(self.file_dir, tileset.image.source))
@@ -37,6 +39,8 @@ class MapImage:
         self._lazy_tileset_images = result
 
     def _generate_animation_substitutions(self, max_frames: int = 50) -> dict:
+        if hasattr(self, '_animation_substitutions'):
+            return
         animation_substitutions = defaultdict(dict)
         all_animated_tile_gids = set()
         tiles_frames = list()
@@ -77,37 +81,60 @@ class MapImage:
         if frames_count > max_frames:
             raise MapError('Map has more frames({}) then max_frames({})'.format(frames_count, max_frames))
 
+    @property
+    def max_tileset_grid_high(self):
+        if not hasattr(self, '_max_tileset_grid_high'):
+            self._max_tileset_grid_high = max(tileset.tileheight for tileset in self.tilesets)
+        return self._max_tileset_grid_high
+
     def _create_map_image_frame(self, substitution: Optional[dict] = None, previous_image: Optional[Image] = None,
-                                only_update: bool = False) -> Image:
+                                only_update: bool = False, layers_names: Optional[List[str]] = None,
+                                line_number: Optional[int] = None) -> Image:
 
         if self.orientation == 'orthogonal':
-            return self._create_orthogonal_map_image_frame(substitution, previous_image, only_update)
+            return self._create_orthogonal_map_image_frame(substitution, previous_image,
+                                                           only_update, layers_names, line_number)
 
         elif self.orientation == 'isometric':
-            return self._create_isometric_map_image_frame(substitution, previous_image, only_update)
+            return self._create_isometric_map_image_frame(substitution, previous_image,
+                                                          only_update, layers_names, line_number)
 
         elif self.orientation in ('staggered', 'hexagonal'):
-            return self._create_staggered_map_image_frame(substitution, previous_image, only_update)
+            return self._create_staggered_map_image_frame(substitution, previous_image,
+                                                          only_update, layers_names, line_number)
 
     def _create_orthogonal_map_image_frame(self, substitution: Optional[dict] = None,
                                            previous_image: Optional[Image] = None,
-                                           only_update: bool = False
+                                           only_update: bool = False,
+                                           layers_names: Optional[List[str]] = None,
+                                           line_number: Optional[int] = None
                                            ) -> Image:
         if self.infinite:
             raise MapError('Can not create image of infinite map.')
         tilewidth = self.tilewidth
         tileheight = self.tileheight
+        width = self.width
+        height = self.height
+        if line_number is None:
+            height_range = range(height)
+            image_height = height * tileheight
+        else:
+            height_range = [line_number]
+            image_height = self.max_tileset_grid_high
+        width_range = range(width)
         if not previous_image:
-            result_image = Image.new('RGBA', (self.width*tilewidth, self.height*tileheight))
+            result_image = Image.new('RGBA', (width*tilewidth, image_height))
         else:
             result_image = previous_image.copy()
         if not substitution:
             substitution = dict()
         substitute = bool(substitution)
         was_changed = False
-        for layer in self.layers:
-            height_range = range(layer.height)
-            width_range = range(layer.width)
+        if layers_names:
+            layers = [layer for layer in self.layers if layer.name in layers_names]
+        else:
+            layers = self.layers
+        for layer in layers:
             if self.renderorder == 'right-up':
                 height_range = reversed(height_range)
             elif self.renderorder == 'left-down':
@@ -115,11 +142,13 @@ class MapImage:
             elif self.renderorder == 'left-up':
                 width_range = reversed(width_range)
                 height_range = reversed(height_range)
-            layer_image = Image.new('RGBA', (layer.width*tilewidth, layer.height*tileheight))
+            layer_image = Image.new('RGBA', (layer.width * tilewidth, image_height))
             width_range = list(width_range)
             height_range = list(height_range)
+            offsetx = round(layer.offsetx) if layer.offsetx else 0
+            offsety = round(layer.offsety) if layer.offsety else 0
             for j in height_range:
-                j_compont = j * layer.height
+                j_compont = j * width
                 for i in width_range:
                     tile_id = j_compont + i
                     gid = layer.data.tiles[tile_id]
@@ -132,21 +161,39 @@ class MapImage:
                         was_changed = True
                     if gid:
                         image = self._lazy_tileset_images[gid]
-                        delta_height = image.size[0] - tileheight
-                        layer_image.paste(image, (i*tilewidth, j*tileheight - delta_height), image.convert('RGBA'))
+                        if line_number is None:
+                            delta_height = image.size[1] - tileheight
+                            layer_image.paste(image,
+                                              (i*tilewidth + offsetx, j * tileheight - delta_height + offsety),
+                                              image.convert('RGBA'))
+                        else:
+                            delta_height = image.size[1] - self._max_tileset_grid_high
+                            layer_image.paste(image,
+                                              (i * tilewidth + offsetx, - delta_height + offsety),
+                                              image.convert('RGBA'))
             result_image = Image.alpha_composite(result_image, layer_image)
         return result_image, was_changed
 
     def _create_isometric_map_image_frame(self, substitution: Optional[dict] = None,
                                           previous_image: Optional[Image] = None,
-                                          only_update: bool = False
+                                          only_update: bool = False,
+                                          layers_names: Optional[List[str]] = None,
+                                          line_number: Optional[int] = None
                                           ) -> Image:
         if self.infinite:
             raise MapError('Can not create image of infinite map.')
         tilewidth = self.tilewidth
         tileheight = self.tileheight
-        x_size = (self.width + self.height) * tilewidth // 2
-        y_size = (self.width + self.height) * tileheight // 2
+        width = self.width
+        height = self.height
+        if line_number is None:
+            height_range = range(height)
+            x_size = (width + height) * tilewidth // 2
+            y_size = (width + height) * tileheight // 2
+        else:
+            height_range = [line_number]
+            x_size = (width + 1) * tilewidth // 2
+            y_size = (width + 2) * tileheight // 2
         if not previous_image:
             result_image = Image.new('RGBA', (x_size, y_size))
         else:
@@ -155,11 +202,17 @@ class MapImage:
             substitution = dict()
         substitute = bool(substitution)
         was_changed = False
-        for layer in self.layers:
-            tile_id = 0
+        if layers_names:
+            layers = [layer for layer in self.layers if layer.name in layers_names]
+        else:
+            layers = self.layers
+        for layer in layers:
             layer_image = Image.new('RGBA', (x_size, y_size))
-            for j in range(layer.height):
-                for i in range(layer.width):
+            offsetx = round(layer.offsetx) if layer.offsetx else 0
+            offsety = round(layer.offsety) if layer.offsety else 0
+            for j in height_range:
+                tile_id = j * width
+                for i in range(width):
                     gid = layer.data.tiles[tile_id]
                     old_gid = gid
                     if substitute and only_update:
@@ -170,29 +223,39 @@ class MapImage:
                         was_changed = True
                     if gid:
                         image = self._lazy_tileset_images[gid]
-                        layer_image.paste(image,
-                                          ((i - j + layer.height - 1) * tilewidth // 2,
-                                           (j + i - 2) * tileheight // 2), image.convert('RGBA')
-                                          )
+                        if line_number is None:
+                            layer_image.paste(image,
+                                              ((i - j + height - 1) * tilewidth // 2 + offsetx,
+                                               (j + i - 2) * tileheight // 2 + offsety), image.convert('RGBA')
+                                              )
+                        else:
+                            layer_image.paste(image,
+                                              (i * tilewidth // 2 + offsetx,
+                                               (i - 1) * tileheight // 2 + offsety), image.convert('RGBA')
+                                              )
                     tile_id += 1
             result_image = Image.alpha_composite(result_image, layer_image)
         return result_image, was_changed
 
     def _create_staggered_map_image_frame(self, substitution: Optional[dict] = None,
                                           previous_image: Optional[Image] = None,
-                                          only_update: bool = False
+                                          only_update: bool = False,
+                                          layers_names: Optional[List[str]] = None,
+                                          line_number: Optional[int] = None
                                           ) -> Image:
         if self.infinite:
             raise MapError('Can not create image of infinite map.')
         tilewidth = self.tilewidth
         tileheight = self.tileheight
+        width = self.width
+        height = self.height
         hexsidelength = self.hexsidelength if self.hexsidelength else 0
         if self.staggeraxis == 'y':
-            x_size = self.width * tilewidth + tilewidth // 2
-            y_size = (self.height + 1) * (tileheight + hexsidelength) // 2 - hexsidelength
+            x_size = width * tilewidth + tilewidth // 2
+            y_size = (height + 1) * (tileheight + hexsidelength) // 2 - hexsidelength
         else:
-            x_size = ((self.width + 1) * (tilewidth + hexsidelength)) // 2 - hexsidelength
-            y_size = self.height * tileheight + tileheight // 2
+            x_size = ((width + 1) * (tilewidth + hexsidelength)) // 2 - hexsidelength
+            y_size = height * tileheight + tileheight // 2
         if not previous_image:
             result_image = Image.new('RGBA', (x_size, y_size))
         else:
@@ -203,16 +266,22 @@ class MapImage:
         was_changed = False
         if self.staggerindex == 'even':
             even = 1
-            i_range = list(range(1, self.width, 2))
-            i_range.extend(list(range(0, self.width, 2)))
+            i_range = list(range(1, width, 2))
+            i_range.extend(list(range(0, width, 2)))
         else:
             even = 0
-            i_range = list(range(0, self.width, 2))
-            i_range.extend(list(range(1, self.width, 2)))
-        for layer in self.layers:
+            i_range = list(range(0, width, 2))
+            i_range.extend(list(range(1, width, 2)))
+        if layers_names:
+            layers = [layer for layer in self.layers if layer.name in layers_names]
+        else:
+            layers = self.layers
+        for layer in layers:
             layer_image = Image.new('RGBA', (x_size, y_size))
+            offsetx = round(layer.offsetx) if layer.offsetx else 0
+            offsety = round(layer.offsety) if layer.offsety else 0
             for j in range(layer.height):
-                j_width = j * self.width
+                j_width = j * width
                 for i in i_range:
                     tile_id = j_width + i
                     gid = layer.data.tiles[tile_id]
@@ -226,45 +295,27 @@ class MapImage:
                     if gid:
                         image = self._lazy_tileset_images[gid]
                         if self.staggeraxis == 'y':
-                            layer_image.paste(image,
-                                              (i * tilewidth + ((j + even) % 2) * tilewidth // 2,
-                                               (j - 2) * (tileheight + hexsidelength) // 2 + hexsidelength),
-                                              image.convert('RGBA')
-                                              )
+                            layer_image.paste(
+                                image,
+                                (i * tilewidth + ((j + even) % 2) * tilewidth // 2 + offsetx,
+                                 (j - 2) * (tileheight + hexsidelength) // 2 + hexsidelength + offsety),
+                                image.convert('RGBA')
+                            )
                         else:
-                            layer_image.paste(image,
-                                              (i * (tilewidth + hexsidelength) // 2,
-                                               (j - 1) * tileheight + ((i + even) % 2) * tileheight // 2),
-                                              image.convert('RGBA')
-                                              )
+                            layer_image.paste(
+                                image,
+                                (i * (tilewidth + hexsidelength) // 2 + offsetx,
+                                 (j - 1) * tileheight + ((i + even) % 2) * tileheight // 2 + offsety),
+                                image.convert('RGBA')
+                            )
             result_image = Image.alpha_composite(result_image, layer_image)
         return result_image, was_changed
 
-    def create_animated_image(self, name: str) -> Image:
-        self._generate_lazy_tileset_images()
-        self._generate_animation_substitutions()
-        if not self._animation_substitutions:
-            return self._create_map_image_frame()
-        frames = list()
-        prev_frame = None
-        duration = list()
-        prev_time = None
-        only_update = False
-        for substitution_time in sorted(self._animation_substitutions.keys()):
-            frame, was_changed = self._create_map_image_frame(self._animation_substitutions[substitution_time],
-                                                              prev_frame,
-                                                              only_update)
-            only_update = True
-            if not prev_frame or was_changed:
-                frames.append(frame)
-                if prev_time is not None:
-                    duration.append(substitution_time - prev_time)
-                    prev_time = substitution_time
-                else:
-                    prev_time = 0
-                prev_frame = frame
-        duration.append(self._animation_time - prev_time)
-
+    def save_image(self,
+                           name: str,
+                           frames: List[Image],
+                           duration: Optional[List[int]] = None
+                           ) -> None:
         buffer = list()
         for frame in frames:
             buf = BytesIO()
@@ -286,13 +337,43 @@ class MapImage:
             im2.putpalette(new_palette)
             images.append(im2)
         image = images[0]
-        image.save(name, 'GIF', save_all=True, append_images=images[1:], loop=0, duration=duration, transparency=0)
+        if duration:
+            image.save(name, 'GIF', save_all=True, append_images=images[1:], loop=0, duration=duration, transparency=0)
+        else:
+            image.save(name, 'GIF', transparency=0)
 
-        # if line_number is None:
-        #     image_height = self.height * self.tileheight
-        # else:
-        #     image_height = self.max_tileset_grid_high
-        # result_gif = Image.new('RGBA', (self.width*self.tilewidth, image_height))
-        # result_gif.paste(frames[0])
-        # result_gif.save(name, 'GIF', save_all=True, append_images=frames[1:],
-        #                 duration=duration, loop=0, transparency=255, disposal=2)
+    def create_animated_image(self,
+                              name: str,
+                              layers_names: Optional[List[str]] = None,
+                              line_number: Optional[int] = None
+                              ) -> Image:
+        self._generate_lazy_tileset_images()
+        self._generate_animation_substitutions()
+
+        if not self._animation_substitutions:
+            frame, was_changed = self._create_map_image_frame(line_number=line_number)
+            self.save_image(name, [frame])
+            return
+
+        frames = list()
+        prev_frame = None
+        duration = list()
+        prev_time = None
+        only_update = False
+        for substitution_time in sorted(self._animation_substitutions.keys()):
+            frame, was_changed = self._create_map_image_frame(self._animation_substitutions[substitution_time],
+                                                              prev_frame,
+                                                              only_update,
+                                                              layers_names,
+                                                              line_number=line_number)
+            only_update = True
+            if not prev_frame or was_changed:
+                frames.append(frame)
+                if prev_time is not None:
+                    duration.append(substitution_time - prev_time)
+                    prev_time = substitution_time
+                else:
+                    prev_time = 0
+                prev_frame = frame
+        duration.append(self._animation_time - prev_time)
+        self.save_image(name, frames, duration)
